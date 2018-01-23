@@ -1,0 +1,7 @@
+- make list of dots associated with rectangle
+- use lor instead of lst
+- line 592 use helper functions for similar functions
+
+D - A
+P - A
+C - 15

@@ -1,0 +1,200 @@
+#lang racket
+
+
+(require 2htdp/image)
+(require 2htdp/universe)
+(require "Interfaces.rkt")
+(require "SuperController.rkt")
+
+(provide xController%)
+
+; PURPOSE STATEMENT :
+
+
+
+(define xController%
+   (class* SuperController% (Controller<%>)
+     
+    ; it gets updated later in the function viewer-image, so initial value doesnt matter     
+
+    ; the height and width of the controller data image
+    (init-field [height-data-image 50])
+    (init-field [width-data-image 150])
+
+    ; the inherited fields from the super class 
+    ; -----------------------------------------
+    
+    (inherit-field model) 
+    
+    ; represents the position of the center of the controller
+    (inherit-field x y)   
+
+    ; represents the dimensions of the controller
+    (inherit-field width height)
+
+    ; represents half dimensions of the controller
+    (inherit-field half-width )
+    (inherit-field half-height)
+    
+    ; represents the coordinates of center of the particle
+    (inherit-field particle-x)
+    (inherit-field particle-y)
+
+     ; represents the velocity of the particle in x, y direction
+    (inherit-field particle-vx) 
+    (inherit-field particle-vy)
+
+    ;; fields for dragging
+    ;; It there has ever been a button-down in this object, then these
+    ;; contain the position of last button-down relative to
+    ;; center of viewer.  Else any value
+
+    ; set to true only if mouse click is within the handle of controller,
+    ; else false
+    (inherit-field handle-selected?)
+
+    ; set to true only if mouse click is within the controller,
+    ; else false
+    (inherit-field controller-selected?)
+
+    ; the coordiantes of the mouse click wrt the handle of controller,
+    (inherit-field saved-mx)  
+    (inherit-field saved-my)  
+
+    ; the coordiantes of the mouse click wrt the controller,
+    (inherit-field offset-controller-mx) 
+    (inherit-field offset-controller-my) 
+ 
+       
+    (super-new)
+
+   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+    ;
+    ;
+    ;
+    (send model register this)
+    
+   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      
+  
+     ; in-this? -> NonNegInt NonNegInt -> Boolean
+     ; GIVEN : the x and y coordinates of the mouse click
+     ; RETURNS : true, iff the mouse click is within the controller,
+     ;           else false
+     ; STRATEGY : Combining simpler function
+     
+  (define/override (in-this? other-x other-y)
+      (and
+       (<= (- x  (/ width 2)) other-x (+ x (/ width 2)))
+       (<= (- y (/ height 2)) other-y (+ y (/ height 2))))) 
+
+     
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;           
+
+     ; in-handle? -> NonNegInt NonNegInt -> Boolean
+     ; GIVEN : the x and y coordinates of the mouse click
+     ; RETURNS : true, iff the mouse click is within the handler of the
+     ;           controller, else false
+     ; STRATEGY : Combining simpler function
+
+    (define/override (in-handle? other-x other-y)
+      (and
+       (<= (- x  (/ width 2)) other-x (+ (- x (/ width 2)) 10)) 
+       (<= (- y  (/ height 2)) other-y  (+ (- y  (/ height 2)) 10))))
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      
+
+    ; after-key-event : KeyEvent -> Void
+    ; GIVEN : a KeyEvent
+    ; EFFECT : updates state of the controller in response to the given KeyEvent,
+    ;          xController doesnot respond to KeyEvents  
+     
+   (define/override (after-key-event kev)   
+      this)
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 
+     (define/override (perform-button-down mx my)
+      (begin
+        (set! saved-mx (- mx particle-x))
+        (set! saved-my (- my particle-y))
+        (set! controller-selected? true)
+        (send model execute-command(make-set-selected controller-selected?))))
+
+     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+    ; current-color : ->        we can generalise this
+
+     
+    #; (define (current-color)             
+      (if handle-selected? "red" "black"))
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      
+
+     ; get the dimensions of the image from data-image function and adds the
+     ; dimensions of handler to get the final dimension of the controller
+
+     ; viewer-image : -> Void
+     ; GIVEN : no arguments
+     ; EFFECT : updates the fields (width-controller-data-image,
+     ;          height-controller-data-image) of controller and sends this
+     ;          data to the methods in super class to calculate the
+     ;          final dimension of the controller image 
+     ; STRATEGY : Combining simple functions
+
+      (define/override (viewer-image)
+      (let ((the-data-image (data-image)))
+        (begin
+          (set! width-data-image (image-width the-data-image))
+          (set! height-data-image (image-height the-data-image))
+          (send this final-controller-height (- height-data-image 30))
+          (send this final-controller-width width-data-image)
+          the-data-image)))
+    
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; data-image : -> Image
+    ;; GIVEN : The location 'l' of the click of the mouse
+    ;; EFFECT: Updates the controller's selected field to true
+    (define/override (data-image) 
+      (overlay
+       (place-image
+       (overlay (circle 2 "solid" "black")
+                (circle 10 "solid" "red"))
+       particle-x (/ height-data-image 2)
+       (rectangle width-data-image height-data-image "outline" "blue"))
+       (rectangle width-data-image height-data-image "outline" "blue")))
+
+     
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+    ; if the controller selected then the controller shouldnt move, only the particle moves
+    ; just update the values of mx and my wrt controller
+    ; if handle selected, then the entire controller should be dragged
+
+    ; after-drag : NonNegInt NonNegInt -> Void
+    ; GIVEN : the coordinates of mouse click
+    ; EFFECTS : updates the controller in response to the mouse drag event
+    ; STRATEGY : Combine simple functions
+     
+    (define/override (after-drag mx my) 
+      (cond
+        [controller-selected?
+         (update-view-controller mx my)]
+        [handle-selected?
+         (begin
+           (set! x (- mx saved-mx)) 
+           (set! y (- my saved-my)))]))
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      
+
+     ; updates the mx amd my wrt controller
+
+     ; update-view-controller : NonNegInt NonNegInt -> Void
+     ; GIVEN : coordinates representing the coordinates of mouse click
+     ; EFFECT : updates fields (offset-controller-mx,offset-controller-my)
+     ;          of controller
+     ; STRATEGY : Combining simpler functions
+     
+     (define/override (update-view-controller mx my)  
+      (send this set-particle (- mx saved-mx)
+            (- my saved-my)))))

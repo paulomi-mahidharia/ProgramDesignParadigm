@@ -1,0 +1,180 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; xyController.rkt:                                                          ;;
+;; The controller for the particle used to visualise the position at which    ;;
+;; the particle is in the x and ydirection                                    ;;
+;; The xyController is draggable by holding on the handler which              ;;
+;; appears on the left top corner of the controller                           ;;
+;; The particle appears as a red circle and is draggable inside the bounds    ;;
+;; of the controller. The particle follows the mouse pointer after the mouse  ;;
+;; is clicked anywhere inside the controller.                                 ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+#lang racket
+
+(require rackunit)
+(require 2htdp/image)
+(require 2htdp/universe)
+(require "SuperController.rkt")
+(require "Interfaces.rkt")
+(require "Model.rkt")
+(require "extras.rkt")
+
+(provide xyController%)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define xyController%
+  (class* SuperController% (Controller<%>)
+    
+    (init-field [width-controller-data-image 150])
+    (init-field [height-controller-data-image 100])
+    ;; The width of the image of the controller
+    ;; The height of the image of the controller
+    
+    
+    ;; inheritted fields
+    (inherit-field model)  ; the model
+    
+    (inherit-field x y)
+    ;; the position of the center of the controller
+    (inherit-field width height)
+    ;; the width and height of the controller
+    
+    (inherit-field half-width )
+    (inherit-field half-height)
+    ;; the width and height of the controller in half
+    
+    (inherit-field particle-x)
+    (inherit-field particle-y)
+    (inherit-field particle-vx)
+    (inherit-field particle-vy)
+    ;; the position of the particle
+    
+    ;; fields for dragging
+    ;; It there has ever been a button-down in this object, then these
+    ;; contain the position of last button-down relative to
+    ;; center of viewer.  Else any value
+    (inherit-field handle-selected?)
+    (inherit-field controller-selected?)
+    (inherit-field saved-mx)
+    (inherit-field saved-my)
+    
+    (inherit-field offset-controller-mx)
+    (inherit-field offset-controller-my)
+
+
+    (super-new)
+    
+    (send model register this)
+ 
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
+    ;; after-key-event: KeyEvent -> Void
+    ;; GIVEN: A keyevent 'kev'
+    ;; EFFECT: The arrow keys alter the position of the particle in x and y
+    ;;         direction
+    (define/override (after-key-event kev)
+      this)
+
+  
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; update-view-controller -> String
+    ;; GIVEN: No arguments
+    ;; RETURNS: the colour of the controller based on whether it is selected or
+    ;;          not.
+    (define/override (update-view-controller mx my)
+      (begin
+        (send this set-particle (- mx saved-mx) (- my saved-my))
+        ))
+    
+    
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; after-drag : Integer Integer
+    ;; GIVEN: The location 'l' of the click of the mouse
+    ;; EFFECT: Updates the particles position after mouse drags
+    (define/override (after-drag mx my)
+      (cond
+        [controller-selected?
+         (update-view-controller mx my)]
+        [handle-selected?
+         (begin
+           (set! x (- mx saved-mx))
+           (set! y (- my saved-my)))]))
+    
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; perform-in-controller : Integer Integer -> Void
+    ;; GIVEN : The location 'l' of the click of the mouse
+    ;; EFFECT: Updates the controller's selected field to true
+
+    (define/override (perform-button-down mx my)
+      (begin
+        (set! saved-mx (- mx particle-x))
+        (set! saved-my (- my particle-y))
+        (set! controller-selected? true)
+        (send model execute-command
+              (make-set-selected controller-selected?))))
+    
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; viewer-image:  -> Void
+    ;; GIVEN: No arguments
+    ;; EFFECT: Assembles the image of the viewer
+    (define/override (viewer-image)
+      (let ((the-data-image (data-image)))
+        (begin
+          (set! width-controller-data-image (image-width the-data-image))
+          (set! height-controller-data-image (image-height the-data-image))
+          (send this final-controller-width width-controller-data-image)
+          (send this final-controller-height height-controller-data-image)
+          the-data-image)))
+    
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; data-image : -> Image
+    ;; GIVEN : The location 'l' of the click of the mouse
+    ;; EFFECT: Updates the controller's selected field to true
+    (define/override (data-image) 
+      (overlay 
+       (place-image
+       (overlay (circle 2 "solid" "black")
+                (circle 10 "solid" "red"))
+       particle-x particle-y
+       (rectangle width-controller-data-image height-controller-data-image "outline" "blue"))
+       (rectangle width-controller-data-image height-controller-data-image "outline" "blue")
+       ))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      
+  
+     ; in-this? -> NonNegInt NonNegInt -> Boolean
+     ; GIVEN : the x and y coordinates of the mouse click
+     ; RETURNS : true, iff the mouse click is within the controller,
+     ;           else false
+     ; STRATEGY : Combining simpler function
+     
+  (define/override (in-this? other-x other-y)
+      (and
+       (<= (- x  (/ width 2)) other-x (+ x (/ width 2)))
+       (<= (- y (/ height 2)) other-y (+ y (/ height 2))))) 
+
+     
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;           
+
+     ; in-handle? -> NonNegInt NonNegInt -> Boolean
+     ; GIVEN : the x and y coordinates of the mouse click
+     ; RETURNS : true, iff the mouse click is within the handler of the
+     ;           controller, else false
+     ; STRATEGY : Combining simpler function
+
+    (define/override (in-handle? other-x other-y)
+      (and
+       (<= (- x  (/ width 2)) other-x (+ (- x (/ width 2)) 10)) 
+       (<= (- y  (/ height 2)) other-y  (+ (- y  (/ height 2)) 10))))
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      
+
+
+
+
+
+    ))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;TEST CASES;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

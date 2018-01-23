@@ -1,0 +1,90 @@
+#lang racket
+(define StatefulWorld<%>
+  (interface ()
+
+   ; Widget<%> -> Void
+   ; GIVEN: A widget
+   ; EFFECT: add the given widget to the world
+   add-widget
+
+   ; SWidget -> Void
+   ; GIVEN: A stateful widget
+   ; EFFECT: add the given widget to the world
+   add-stateful-widget
+
+   ; PosReal -> Void
+   ; GIVEN: a framerate, in secs/tick
+   ; EFFECT: runs this world at the given framerate
+   run
+
+    ))
+
+;; Every functional object that lives in the world must implement the
+;; Widget<%> interface.
+
+(define Widget<%>
+  (interface ()
+
+    ; -> Widget<%>
+    ; GIVEN: no arguments
+    ; RETURNS: the state of this object that should follow at the next tick.
+    after-tick          
+
+    ; Integer Integer -> Widget<%>
+    ; GIVEN: a location
+    ; RETURNS: the state of this object that should follow the
+    ; specified mouse event at the given location.
+    after-button-down
+    after-button-up
+    after-drag
+
+    ; KeyEvent : KeyEvent -> Widget
+    ; GIVEN: a key event
+    ; RETURNS: the state of this object that should follow the
+    ; given key event
+    after-key-event     
+
+    ; Scene -> Scene
+    ; GIVEN: a scene
+    ; RETURNS: a scene like the given one, but with this object
+    ; painted on it.
+    add-to-scene
+    ))
+
+;; Every stable (stateful) object that lives in the world must implement the
+;; SWidget<%> interface.
+
+(define SWidget<%>
+  (interface ()
+
+    ; -> Void
+    ; GIVEN: no arguments
+    ; EFFECT: updates this widget to the state it should have
+    ; following a tick.
+    after-tick          
+
+    ; Integer Integer -> Void
+    ; GIVEN: an x and a y coordinate
+    ; EFFECT: updates this widget to the state it should have
+    ; following the specified mouse event at the given location.
+    after-button-down
+    after-button-up
+    after-drag
+
+    ; KeyEvent : KeyEvent -> Void
+    ; GIVEN: a key event
+    ; EFFECT: updates this widget to the state it should have
+    ; following the given key event
+    after-key-event     
+
+    ; Scene -> Scene
+    ; GIVEN: a scene
+    ; RETURNS: a scene like the given one, but with this object
+    ; painted on it.
+    add-to-scene
+    ))
+
+;; make-world : NonNegInt NonNegInt -> StatefulWorld
+;; GIVEN: the width and height of a canvas
+;; RETURNS: a StatefulWorld object that will run on a canvas of the
+;; given width and height.

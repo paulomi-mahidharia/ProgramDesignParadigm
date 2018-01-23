@@ -1,0 +1,216 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; displays as an outline rectangle with text showing the x                   ;;
+;; coordinate and velocity of the particle.                                   ;;
+;; the rectangle is draggable                                                 ;;
+;; right,left increments or decrements the speed of the particle              ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+#lang racket
+(require 2htdp/image)
+(require 2htdp/universe)
+(require "Interfaces.rkt")
+(require "extras.rkt")
+
+
+(define CANVAS-WIDTH 600)
+(define CANVAS-WIDTH-HALF (/ CANVAS-WIDTH 2))
+(define CANVAS-HEIGHT 500)
+(define CANVAS-HEIGHT-HALF (/ CANVAS-HEIGHT 2))
+(define CONTROLLER-WIDTH 150)    ;; check
+(define CONTROLLER-HEIGHT 100)   ;; check
+(define HANDLE-LEN 10)
+
+
+(provide SuperController%)
+
+;; a VelocityController% is a (new VelocityController% [model Model<%>])
+
+(define SuperController%
+  (class* object% (Controller<%>) 
+    
+    (init-field model)  ; the model
+    ;(init-field [x 150] [y 100])
+
+    ; Nats -- the position of the center of the controller
+    (init-field [x CANVAS-WIDTH-HALF] [y CANVAS-HEIGHT-HALF])      
+    (init-field [width CONTROLLER-WIDTH][height CONTROLLER-HEIGHT])
+    
+    (field [half-width  (/ width  2)])
+    (field [half-height (/ height 2)])
+
+    ;; the position of the particle
+    (field [particle-x 0])
+    (field [particle-y 0])
+    (field [particle-vx 0])
+    (field [particle-vy 0])
+
+    (field [SPACE 30])
+
+    ;; fields for dragging
+    ;; It there has ever been a button-down in this object, then these
+    ;; contain the position of last button-down relative to
+    ;; center of viewer.  Else any value
+    (field [handle-selected? false])
+    (field [controller-selected? false])
+    (field [saved-mx 0])
+    (field [saved-my 0])
+    (field [offset-controller-mx 0])
+    (field [offset-controller-my 0])
+
+    (super-new)
+
+    (send model register this)
+    
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
+    ;; Signal -> Void
+    ;; decodes signal and updates local data
+    ;;
+    ;;
+    (define/public (receive-signal sig)
+      (cond
+        [(report-position? sig)
+         (begin
+           (set! particle-x (report-position-pos-x sig))
+           (set! particle-y (report-position-pos-y sig)))]
+        
+        [(report-velocity? sig)
+         (begin
+           (set! particle-vx (report-velocity-v-x sig))
+         (set! particle-vy (report-velocity-v-y sig)))]))
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; after-button-down : Integer Integer -> Void
+    ;; GIVEN: the location of a button-down event
+    ;; EFFECT: makes the viewer selected
+    ;; STRATEGY: Cases on whether the event is in this object
+    (define/public (after-button-down mx my)
+      (cond
+        [(in-handle? mx my) 
+        (begin
+          (set! saved-mx (- mx x))
+          (set! saved-my (- my y))
+          (set! handle-selected? true))]
+        [(in-this? mx my)
+;         (set! offset-controller-mx (- mx particle-x))
+;          (set! offset-controller-my (- my particle-y))
+;          (set! controller-selected? true)]))
+          (perform-button-down mx my)]))
+
+    (abstract perform-button-down)   
+
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;
+    ;;
+    ;;
+    ;;
+    (define/public (set-particle new-x new-y)
+      (send model execute-command
+             (make-set-position new-x new-y)))
+
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    
+    ;; after-button-up : Integer Integer -> Void
+    ;; GIVEN: the (x,y) location of a button-up event
+    ;; EFFECT: makes this unselected
+    (define/public (after-button-up mx my)
+      (begin
+        (set! handle-selected? false)
+        (set! controller-selected? false)
+        (send model execute-command
+              (make-set-selected controller-selected?))))
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; after-drag : Integer Integer -> Void
+    ;; GIVEN: the location of a drag event
+    ;; STRATEGY: Cases on whether this is selected.
+    ;; If it is selected, move it so that the vector from its position to
+    ;; the drag event is equal to saved-mx.  Report the new position to
+    ;; the registered balls.
+    (define/public (after-drag mx my)
+      (if handle-selected?
+        (begin
+          (set! x (- mx saved-mx))
+          (set! y (- my saved-my)))
+        2744))
+
+   
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; add-to-scene : Scene -> Scene
+    ;; RETURNS: a scene like the given one, but with this wall painted
+    ;; on it.
+    ;; STRATEGY: place the image centered at x y
+    (define/public (add-to-scene scene)
+      (local ((define viewer (viewer-image)))
+        (place-image
+         (overlay
+          (overlay/xy
+           (square 10 "outline" (current-color)) 0 0
+           (rectangle width height "outline" "black"))
+         
+           viewer 
+           ) x y scene)))
+ 
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+    ;; final-controller-width : NonNegInt -> NonNegInt
+    ;; GIVEN : the width of the controller image without includng the handler
+    ;; RETURN : the width of the controller image includng the handler
+    ;;
+    (define/public (final-controller-width width-data-iamge)
+      (set! width (+ width-data-iamge SPACE)))
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+    ;; final-controller-height : NonNegInt -> NonNegInt
+    ;; GIVEN : the width of the controller image without includng the handler
+    ;; RETURN : the width of the controller image includng the handler
+    
+    (define/public (final-controller-height height-data-iamge)
+      (set! height (+ height-data-iamge SPACE)))
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;
+    ;;
+    ;;
+    (define/public (after-tick) 'viewer1-after-tick-trap)
+
+     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;
+    ;;
+    ;;
+    (define/public (current-color)
+      (if handle-selected? "red" "black"))
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;
+    ;;
+    ;;
+    (abstract update-view-controller)
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;
+    ;;
+    ;;assemble the image of the viewer
+    (abstract viewer-image)
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;
+    ;;
+    (abstract data-image)
+
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;
+    ;;
+    (abstract in-this?)
+    
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;;
+    ;;
+    (abstract in-handle?)
+    
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    ;; KeyEvent -> Void
+    ;; interpret +,- as commands to the model
+    ;; +/- alter velocity of the particle
+    (abstract after-key-event)))

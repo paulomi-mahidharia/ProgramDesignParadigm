@@ -1,0 +1,5 @@
+#lang racket
+
+;;run : PosReal -> Void
+;;GIVEN: a frame rate, in sec/tick
+;;EFFECT: Creates and runs the MVC simulation with the given frame rate.

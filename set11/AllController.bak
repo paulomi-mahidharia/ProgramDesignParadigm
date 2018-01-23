@@ -1,0 +1,25 @@
+#lang racket
+
+;; displays as an outline rectangle with text showing the x and y
+;; coordinate and vx and vy velocity of the particle.
+
+;; the rectangle is draggable
+
+;; the arrow keys increments or decrements location of the particle by 5
+
+(require 2htdp/image)
+(require 2htdp/universe)
+(require "Interfaces.rkt")
+
+(define CANVAS-WIDTH 600)
+(define CANVAS-WIDTH-HALF (/ CANVAS-WIDTH 2))
+(define CANVAS-HEIGHT 500)
+(define CANVAS-HEIGHT-HALF (/ CANVAS-HEIGHT 2))
+
+(define CONTROLLER-WIDTH 120)
+(define CONTROLLER-HEIGHT 80)
+(define HANDLE-LEN 10)
+
+;; a PosVelController% is either
+;  --
+;  --

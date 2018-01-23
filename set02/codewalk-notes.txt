@@ -1,0 +1,17 @@
+CCS ID: paulomiM
+
+Reviewer1: Ramasubramanian Chandrasekar
+Reviewer2: Prashant Rajendran
+
+Correctness: 14/15
+Design : AB
+Presentation : A
+
+Notes:
+1. Missing 100% test coverage
+2. Direction is mentioned as String in template
+3. probe-turned-left : strategy is arguable
+4. probe-move-north: probe is facing north is not mentioned
+5. probe-forward: could have been designed in a better way
+6. probe-east? : returns T/F (redundant statement)
+7. else condition in direction handling cond is not necessary 

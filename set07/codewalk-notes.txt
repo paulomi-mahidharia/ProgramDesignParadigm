@@ -1,0 +1,17 @@
+TA Name:- Hemanth [sridharaashalatha.h@husky.neu.edu]
+Helper Name:- Parth [bansal.p@husky.neu.edu]
+
+Design Grade:- AB
+Presentation Grade - paulomiM:- A
+Presentation Grade - patricia5859:- AB
+Correctness Score:- 15/15
+
+Notes:-
+1. flat-rep DD should have information about which representation is legal and which is not.
+2. lines-in-sequence? has a wrong contract (3rd argument).
+3. patricia5859: not able to answer the question whether are-other-elements-equal? function and is-subsection-valid? can be combined or not?
+4. rainfall function has a equal? condition that could have used just empty? to check whether the list is empty or not. 
+5. Function names should be a bit more specific and self-explanatory. 
+6. cal-helper function has a wrong strategy.
+7. patricia5859: not able to answer whether cal-sum and cal-length functions could be combined?
+8. are-other-elements-equal? function has a wrong strategy.

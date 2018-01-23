@@ -1,0 +1,10 @@
+TA : Prachi Bhansali
+Helper : Abhilash MS
+
+Design : A
+- There should be clear separation of interfaces and classes
+- interface purpose statements should be generic
+- draw-the-image need not be public in Block%
+- could have used foldr for make-new-interested-yyyy function
+
+Presentation : A

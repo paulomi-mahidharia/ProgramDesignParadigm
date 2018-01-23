@@ -1,0 +1,26 @@
+#lang racket
+
+(require 2htdp/image)
+(require 2htdp/universe)
+(require "Interfaces.rkt")
+(require "SuperController.rkt")
+(require "extras.rkt")
+(require "Model.rkt")
+
+(provide TextController%)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; a PositionController% is a (new PositionController% [model Model<%>])
+
+;; displays as an outline rectangle with text showing the x and y
+;; coordinate and vx and vy velocity of the particle.
+
+;; the rectangle is draggable
+
+;; the arrow keys increments or decrements location of the particle by 5
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define PositionController%
+  (class* SuperController% (Controller<%>)

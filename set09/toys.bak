@@ -1,0 +1,1321 @@
+
+;;;;;;;;;;;;;;;;;;;;;;;PROBLEM SET 09 : QUESTION 01;;;;;;;;;;;;;;;;;;;;;;
+
+; PROBLEM STATEMENT :
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+#lang racket
+
+(check-location "09" "toys.rkt")
+
+(provide
+ make-world
+ run
+ make-square-toy
+ make-throbber
+ make-clock
+ make-football)
+
+(require "extras.rkt")
+(require rackunit)
+(require 2htdp/universe)
+(require 2htdp/image)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; GLOBAL CONSTANTS :
+
+(define CANVAS-WIDTH 600)
+(define CANVAS-HEIGHT 500)
+
+(define TARGET-INITIAL-X (/ CANVAS-WIDTH 2)) 
+(define TARGET-INITIAL-Y (/ CANVAS-HEIGHT 2))
+
+(define EMPTY-CANVAS (empty-scene CANVAS-WIDTH CANVAS-HEIGHT))
+
+;;Constants for ThrobberToy
+(define MIN-T-RADIUS 5)
+(define MAX-T-RADIUS 20)
+
+;;Constants for KeyEvents
+(define ADD-SQUARE-TOY-KEYEVEMT "s")
+(define ADD-THROBBER-TOY-KEYEVEMT "t")
+(define ADD-CLOCK-TOY-KEYEVEMT "w")
+(define ADD-FOOTBALL-TOY-KEYEVEMT "f")
+(define NOT-VALID-KEYEVENT "g")
+
+;;Constants for MouseEvents
+(define MOUSE-BUTTON-DOWN "button-down")
+(define MOUSE-BUTTON-UP "button-up")
+(define MOUSE-DRAG "drag")
+(define INVALID-MOUSE-EVENT "enter")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;INTERFACES :
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; A WorldState<%> contains all the fuctions to which a world responds
+; A WorldState represents the state of the world at a given instant of time
+
+(define WorldState<%>
+  (interface ()
+    
+    ; -> World
+    ; GIVEN   : no arguments
+    ; RETURNS : the state of the world at the next tick
+    after-tick          
+    
+    ; Integer Integer MouseEvent-> World
+    ; GIVEN    : a location
+    ; RETURNS  : the state of the world that should follow the
+    ;            given mouse event at the given location.
+    after-mouse-event
+    
+    
+    ; KeyEvent : KeyEvent -> Widget
+    ; GIVEN    : a key event
+    ; RETURNS  : the state of the world that should follow the
+    ;            given key event
+    after-key-event     
+    
+    ; -> Scene
+    ; GIVEN    : a scene
+    ; RETURNS  : a scene that depicts this World
+    to-scene))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Every object that lives in the world must implement the Widget<%>
+; interface.
+
+(define Widget<%>
+  (interface()
+    
+    ; -> Widget
+    ; GIVEN: no arguments
+    ; RETURNS: the state of this object that should follow at time t+1.
+    after-tick
+    
+    ; Integer Integer -> Widget
+    ; GIVEN: a location
+    ; RETURNS: the state of this object that should follow the
+    ;          specified mouse event at the given location.
+    after-button-down
+    after-button-up
+    after-drag
+    
+    ; KeyEvent : KeyEvent -> Widget
+    ; GIVEN: a key event and a time
+    ; RETURNS: the state of this object that should follow the
+    ; given key event
+    after-key-event
+    
+    ; Scene -> Scene
+    ; GIVEN: a scene
+    ; RETURNS: a scene like the given one, but with this object
+    ; painted on it.
+    add-to-scene))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; PlaygroundState represensts a canvas which has the target and the toys(if any)
+; PlaygroundState<%> implements all the functions of WorldState<%>
+
+(define PlaygroundState<%>
+  (interface(WorldState<%>) 
+    
+    ;; -> Integer
+    ;; RETURN: the x and y coordinates of the target
+    target-x
+    target-y
+    
+    ;; -> Boolean
+    ;; Is the target selected?
+    target-selected?
+    
+    ;; -> ListOfToy<%>
+    get-toys))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; A Toy represents any live object in the world
+; Toy<%> implements all the functions of Widget<%>
+
+(define Toy<%>
+  (interface(Widget<%>)
+    
+    ; -> Int
+    ; RETURNS: the x or y position of the center of the toy
+    toy-x
+    toy-y
+    
+    ;; -> Int
+    ;; RETURNS: some data related to the toy.  The interpretation of
+    ;; this data depends on the class of the toy.
+    ;; for a square, it is the velocity of the square (rightward is
+    ;; positive)
+    ;; for a throbber, it is the current radius of the throbber
+    ;; for the clock, it is the current value of the clock
+    ;; for a football, it is the current size of the football (in
+    ;; arbitrary units; bigger is more)
+    toy-data))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; ListOfToys<%> (LOT<%>) is either:
+
+; -- empty
+; -- (cons Toy<%> LOT<%>)
+
+;INTERPRETATION :
+
+; -- empty: a list with no object(s) of a class that implements Toy<%>
+; -- (cons Toy<%> LOT<%>) : a list with first element as an object of a class
+;                           that implements Toy<%> and rest as objects of a
+;                           class that implements LOT<%>
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; run : PosNum PosInt -> PlaygroundState<%> 
+; GIVEN: a frame rate (in seconds/tick) and a square-speed (in pixels/tick),
+; creates and runs a world in which square toys travel at the given
+; speed.  Returns the final state of the wor
+
+(define (run frame-rate speed)
+  (big-bang (make-world speed)
+            (on-tick (lambda (w) (send w after-tick)) frame-rate)
+            (on-draw (lambda (w) (send w to-scene)))
+            (on-key (lambda (w kev) (send w after-key-event kev)))
+            (on-mouse (lambda (w mx my mev) (send w after-mouse-event mx my mev)))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; make-world : PosInt -> PlaygroundState<%>
+; GIVEN      : a PosInt representing the speed of the square toy
+; RETURNS    : a world with a target, but no toys, and in which any
+;              square toys created in the future will travel at the given
+;              speed (in pixels/tick)
+
+(define (make-world speed)
+  (make-world-state
+   (initial-target 1) empty 0 speed))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; make-world-state : Widget<%> LOT<%> NonNegInt Integer -> PlaygroundState<%> 
+; GIVEN :   ****
+; RETURNS : an object of a class that implements PlaygroundState<%>
+; DESIGN STRATEGY : Combine simpler functions
+
+(define (make-world-state target toys t square-speed)
+  (new World% [target target][toys toys][t t][square-speed square-speed]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; The World% class
+
+; a World is a (new  World% [target ???] [toys ???] [square-speed PosInt]) 
+; a World represents a world
+
+(define World%
+  (class* object% (PlaygroundState<%>)
+    
+    ; Fields for World
+    
+    (init-field target toys t square-speed)   
+    
+    ; ITNTERPRETATION :
+    
+    ; target       :  the target of the world
+    ; toys         : ListOfToys ******** template?
+    ; t            : Time ********
+    ; square-speed : the speed of the square-toy, in pixels/tick
+    
+    (super-new)
+    
+    ; Methods for World
+    
+    ; after-tick : -> World
+    ; GIVEN: no arguments
+    ; RETURNS: the state of the world at the next tick
+    
+    (define/public (after-tick)
+      (make-world-state
+       (send target after-tick)
+       (map
+        ;
+        ;
+        (lambda (toy) (send toy after-tick))
+        toys)
+       (+ 1 t)
+       square-speed))
+    
+    ;  to-scene : -> Scene
+    ; GIVEN: a scene
+    ; RETURNS: a scene that depicts this World
+    (define/public (to-scene)
+      (foldr
+       ; 
+       ;
+       (lambda (toy scene)
+         (send toy add-to-scene scene))
+       (send target add-to-scene EMPTY-CANVAS)
+       toys)) 
+    
+    ; after-key-event : KeyEvent -> World
+    ; GIVEN: a key event
+    ; RETURNS: the state of the world that should follow the
+    ; given key event
+    (define/public (after-key-event kev)
+      (cond
+        [(key=? kev ADD-SQUARE-TOY-KEYEVEMT)
+         (make-world-state
+          target
+          (cons (make-square-toy (target-x)
+                                 (target-y)
+                                 square-speed)
+                toys)
+          t
+          square-speed)]
+        
+        [(key=? kev ADD-THROBBER-TOY-KEYEVEMT)
+         (make-world-state
+          target
+          (cons (make-throbber (target-x)
+                               (target-y))
+                toys)
+          t
+          square-speed)]
+        
+        [(key=? kev ADD-CLOCK-TOY-KEYEVEMT)
+         (make-world-state
+          target
+          (cons (make-clock (target-x)
+                            (target-y))
+                toys)
+          t
+          square-speed)]
+        
+        [(key=? kev ADD-FOOTBALL-TOY-KEYEVEMT)
+         (make-world-state
+          target
+          (cons (make-football (target-x)
+                               (target-y))
+                toys)
+          t
+          square-speed)]
+        [else this]))
+    
+    
+    ; after-mouse-event : Integer Integer MouseEvent -> World
+    ; GIVEN: a location
+    ; RETURNS: the state of the world that should follow the
+    ; given mouse event at the given location.
+    
+    (define/public (after-mouse-event mx my mev)
+      (cond
+        [(mouse=? mev MOUSE-BUTTON-DOWN) (world-after-button-down mx my)]         
+        [(mouse=? mev MOUSE-DRAG) (world-after-drag mx my)]
+        [(mouse=? mev MOUSE-BUTTON-UP) (world-after-button-up mx my)]
+        [else this]))
+    
+    ; world-after-button-down : NonNegInt NonNegInt -> World ***(output PlayGround?)
+    ; GIVEN : the x and y mouse cordinate of mouse click 
+    ; RETURNS : World followed by the MOUSE-BUTTON-DOWN MouseEvent
+    ; STRATEGY : ???
+    (define/public (world-after-button-down mx my)
+      (make-world-state
+       (send target after-button-down mx my)
+       (map
+        ;
+        ;
+        (lambda (toy) (send toy after-button-down mx my))
+        toys)
+       t
+       square-speed))
+    
+    ; world-after-drag : NonNegInt NonNegInt -> World ***(output PlayGround?)
+    ; GIVEN : the x and y mouse cordinate of mouse click 
+    ; RETURNS : World followed by the MOUSE-DRAG MouseEvent
+    ; STRATEGY : ???
+    (define/public (world-after-drag mx my)
+      (make-world-state
+       (send target after-drag mx my)
+       (map
+        ;
+        ;
+        (lambda (toy) (send toy after-drag mx my))
+        toys)
+       t
+       square-speed))
+    
+    ; world-after-button-up : NonNegInt NonNegInt -> World ***(output PlayGround?)
+    ; GIVEN : the x and y mouse cordinate of mouse click 
+    ; RETURNS : World followed by the MOUSE-BUTTON-UP MouseEvent
+    ; STRATEGY : ???
+    (define/public (world-after-button-up mx my)
+      (make-world-state
+       (send target after-button-up mx my)
+       (map
+        ;
+        ;
+        (lambda (toy) (send toy after-button-up mx my))
+        toys)
+       t
+       square-speed))
+    
+    ; target-x : -> Integer
+    ; RETURN : th x coordinate of the target
+    (define/public (target-x)  
+      (get-field x target)) 
+    
+    ; target-y : -> Integer
+    ; RETURN : th y coordinate of the target
+    (define/public (target-y)  
+      (get-field y target))
+    
+    ; target-selected? : -> Boolean
+    ; RETURN : the value of selected? field of target
+    ;          (true, if it selected else false)
+    (define/public (target-selected?)  
+      (get-field selected? target))
+    
+    ; get-toys : -> ListOfToy<%>  *****how do we define ListOfToy??????
+    ; RETURN : list of all toys present in the world else returns empty
+    (define/public (get-toys)
+      toys)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; ******** add some more details
+
+; PURPOSE STATEMENT : ***********
+
+; Target is the Widget which enables addition of toys in the World after
+; specific KeyEvents
+; A Target is a (new Target% [x Int] [y Int] [selected? Boolean]
+;                 [saved-mx NonNegInt] [saved-my NonNegInt])
+; a Target represenst a target
+
+(define Target%
+  (class* object% (Widget<%>)
+    
+    ;  the fields for Target
+    (init-field x y selected? saved-mx saved-my)
+    (field [r 10] [TARGET-IMAGE (circle r "outline" "red")])
+    
+    ; INTERPRETATION :
+    ; x         : the x coordinate of the center of the target
+    ; y         : the y coordinate of the center of the target
+    ; selected? : true if the target is selected with the mouse
+    ; saved-mx  : the x coordinate of the mouse if target is selected
+    ;             otherwise 0
+    ; saved-my  : the y coordinate of the mouse if target is selected
+    ;             otherwise 0
+    ; r         : the radius of the target
+    ; TRAGET-IMAGE : image for dispalying target
+    
+    (super-new)
+    
+    ; the methods for Target
+    
+    ; after-tick : -> Target<%> *****
+    ; GIVEN      : No aruguements
+    ; RETURNS    : a state of Target after a tick
+    ; STRATEGY   :
+    (define/public (after-tick) 
+      (new Target%
+           [x x] [y y]
+           [selected? selected?]
+           [saved-mx saved-mx]
+           [saved-my saved-my]))
+    
+    ; after-button-down : NonNegInt NonNegInt -> Target<%>  ******
+    ; GIVEN : the x and y coordinate of the mouse click
+    ; RETURNS : a target that should follow after the MOUSE-BUTTON-DOWN event
+    ; DESIGN STRATEGY : Cases on in-target?   ******
+    (define/public (after-button-down mx my)
+      (if (in-target? mx my)
+          (new Target%
+               [x x] [y y]
+               [selected? true]
+               [saved-mx (- mx x)]
+               [saved-my (- my y)])
+          this))
+    
+    ; after-button-up : NonNegInt NonNegInt -> Target<%>  ******
+    ; GIVEN : the x and y coordinate of the mouse click
+    ; RETURNS : a target that should follow after the MOUSE-BUTTON-UP event
+    ; DESIGN STRATEGY :    ******
+    (define/public (after-button-up mx my) 
+      (new Target%
+           [x x] [y y]
+           [selected? false]
+           [saved-mx saved-mx]
+           [saved-my saved-my]))
+    
+    ; after-drag : NonNegInt NonNegInt -> Target<%> ******
+    ; GIVEN : the x and y coordinate of the mouse click
+    ; RETURNS : a target that should follow after the MOUSE-DRAG event
+    ; DESIGN STRATEGY : Cases on selected?
+    (define/public (after-drag mx my)
+      (if selected?
+          (new Target%
+               [x (- mx saved-mx)]
+               [y (- my saved-my)]
+               [selected? true]
+               [saved-mx saved-mx]
+               [saved-my saved-my])
+          this))
+    
+    ; after-key-event : KeyEvent -> Target<%>  *****
+    ; RETURNS: A target as it should be after the
+    ;         given key event.
+    ; DETAILS: a target ignores key events
+    ; DESIGN STRATEGY :    ******
+    (define/public (after-key-event kev)
+      this)
+    
+    ; add-to-scene : Scene -> Scene
+    ; GIVEN : a scene 
+    ; RETURNS : a Scene like the given one with the target painted on it
+    ; DESIGN STRATEGY : *******
+    (define/public (add-to-scene scene)
+      (place-image TARGET-IMAGE x y scene)) 
+    
+    ; in-target? : NonNegInt NonNegInt -> Boolean
+    ; GIVEN : the x and y coordinates of the mouse 
+    ; RETURNS : true, iff the mouse click is within the target else false
+    ; DESIGN STRATEGY : *******
+    (define (in-target? other-x other-y)
+      (<= (+ (sqr (- x other-x)) (sqr (- y other-y)))  
+          (sqr r)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; initial-target : PosNum -> Target<%> *****
+; GIVEN : a PosNum (is ignored)
+; RETURNS : a first target of tehe world with all its field
+;           initialised to the initial condition          
+; DESIGN STRATEGY :  ******
+(define (initial-target t)
+  (new Target% [x TARGET-INITIAL-X]
+       [y TARGET-INITIAL-Y]
+       [selected? false]
+       [saved-mx 0]
+       [saved-my 0]))  
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; make-square-toy : PosInt PosInt PosInt -> Toy<%>
+; GIVEN: an x and a y position, and a speed
+; RETURNS: an object representing a square toy at the given position,
+;          travelling right at the given speed.
+
+(define (make-square-toy new-x new-y new-speed)
+  (new SquareToy% [x new-x] [y new-y] [selected? false] [off-x 0] [off-y 0]
+       [speed new-speed]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; PURPOSE STATEMENT : ***********
+; a SquareToy is a (new SquareToy%  [y Int] [selected? Boolean]
+;                 [off-x NonNegInt] [off-y NonNegInt] [speed NonNegInt])
+; a SqaureToy represnts a squaretoy
+; a SquareToy starts travelling rightward at a constant given speed.
+; When its edge reaches the edge of the canvas, it executes a Perfect Bounce.
+; a SquareToy is draggable
+
+(define SquareToy%
+  (class* object% (Toy<%>)
+    
+    ; Fields for the  SquareToy
+    (init-field x y selected? off-x off-y speed)
+    (field [S-LEN 40])
+    (field [S-BOUNDARY-MIN (/ S-LEN 2)]
+           [S-BOUNDARY-MAX (- CANVAS-WIDTH S-BOUNDARY-MIN)])
+    (field [SQUARE-IMAGE (square S-LEN "outline" "purple")])
+    
+    ; INTERPRETATION :
+    ; x         : the x coordinate of the center of the square toy
+    ;           : the y coordinate of the center of the square toy
+    ; selected? : true if the square toy is selected with the mouse
+    ; off-x     : the x coordinate of the mouse if toy is selected
+    ;             otherwise 0
+    ; off-y     : the y coordinate of the mouse if toy is selected
+    ;             otherwise 0
+    ; speed     : the speed at which the square toy moves horizontaly
+    ; S-LEN     : the length of the side of square
+    ; S-BOUNDARY-MIN : the half of the square's side length
+    ; S-BOUNDARY-MAX : the difference of canvas width and the half
+    ;                  of the square's side length 
+    ; SQUARE-IMAGE : the image for displaying square toy 
+    
+    (super-new)
+    
+    ; Methods for SquareToy
+    
+    ; after-tick : -> Toy<%> *****
+    ; GIVEN      : No aruguements
+    ; RETURNS    : a state of Toy after a tick
+    ; STRATEGY   : Cases on selected?
+    (define/public (after-tick)  
+      (if selected?
+          this
+          (new SquareToy% [x (update-coordinate)]
+               [y y] 
+               [selected? selected?]
+               [off-x off-x]
+               [off-y off-y]
+               [speed (update-speed)])))
+    
+    ; update-coordinate : ->  NonNegInt
+    ; RETURNS : the x coordinate of the squaretoy's center based on its speed
+    (define (update-coordinate)
+      (cond
+        [(<= (+ x speed) S-BOUNDARY-MIN) S-BOUNDARY-MIN]
+        [(>= (+ x speed) S-BOUNDARY-MAX) S-BOUNDARY-MAX]
+        [else (+ x speed)]))
+    
+    ; update-speed : -> Int
+    ; RETURNS : the speed of the square toy based on its current location
+    (define (update-speed)
+      (if (or (<= (+ x speed) S-BOUNDARY-MIN) 
+              (>= (+ x speed) S-BOUNDARY-MAX))
+          (- 0 speed)
+          speed))
+    
+    ; after-button-down : NonNegInt NonNegInt -> Toy<%>  ******
+    ; GIVEN : the x and y coordinate of the mouse click
+    ; RETURNS : a SquareToy that should follow after the MOUSE-BUTTON-DOWN event
+    ; DESIGN STRATEGY :    ******
+    
+    (define/public (after-button-down mx my)
+      (new SquareToy% [x x]
+           [y y] 
+           [selected? (in-square? this x y mx my)]
+           [off-x (- mx x)]
+           [off-y (- my y)]
+           [speed speed]))
+    
+    
+    ; in-square? :
+    ; GIVEN : the x and y coordinates of the mouse 
+    ; RETURNS : true, iff the mouse click is within the SquareToy else false
+    ; DESIGN STRATEGY : *******
+    
+    (define/public (in-square? r x y mx my)
+      (and
+       (<= (- (toy-y)  S-BOUNDARY-MIN) my (+ (toy-y) S-BOUNDARY-MIN))
+       (<= (- (toy-x)  S-BOUNDARY-MIN) mx (+ (toy-x) S-BOUNDARY-MIN))))
+    
+    ; after-button-up : NonNegInt NonNegInt -> Toy<%>  ******
+    ; GIVEN : the x and y coordinate of the mouse click
+    ; RETURNS : a SquareToy that should follow after the MOUSE-BUTTON-UP event
+    ; DESIGN STRATEGY :    ******
+    (define/public (after-button-up mx my)
+      (new SquareToy% [x x]
+           [y y] 
+           [selected? false]
+           [off-x 0]
+           [off-y 0]
+           [speed speed]))
+    
+    ; after-drag : NonNegInt NonNegInt -> Toy<%> ******
+    ; GIVEN : the x and y coordinate of the mouse click
+    ; RETURNS : a SquareToy that should follow after the MOUSE-DRAG event
+    ; DESIGN STRATEGY : Cases on selected?
+    (define/public (after-drag mx my)
+      (if selected?
+          (new SquareToy% [x (+ x off-x)]
+               [y (+ y off-y)] 
+               [selected? true]
+               [off-x (- mx (+ x off-x))]
+               [off-y (- my (+ y off-y))]
+               [speed speed])
+          this))
+    
+    ; after-key-event : KeyEvent -> Toy<%>  *****
+    ; RETURNS: A SquareToy as it should be after the
+    ;         given key event
+    ; DETAILS: a SquareToy ignores key events
+    ; DESIGN STRATEGY :    ******
+    (define/public (after-key-event kev)
+      this)
+    
+    ; add-to-scene : Scene -> Scene
+    ; GIVEN : a scene 
+    ; RETURNS : a Scene like the given one with the SquareToy painted on it
+    ; DESIGN STRATEGY : *******
+    (define/public (add-to-scene scene)
+      (place-image SQUARE-IMAGE x y scene ))
+    
+    ; toy-x : -> Int
+    ; RETURNS: the x coordinate of the center of the square toy
+    (define/public (toy-x)
+      x)
+    
+    ; toy-y : -> Int
+    ; RETURNS : teh y coordiante of the center of the square toy
+    (define/public (toy-y)
+      y)
+    
+    ; toy-data : -> Int
+    ; RETURNS : the current speed of the square toy
+    (define/public (toy-data)
+      speed)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;make-throbber: PosInt PosInt -> Toy<%>
+;;GIVEN: an x and a y position
+;;RETURNS: an object representing a throbber at the given position.
+
+(define (make-throbber new-x new-y)
+  (new ThrobberToy% [x new-x] [y new-y] [selected? false] [off-x 0] [off-y 0]
+       [r MIN-T-RADIUS] [r-speed 1]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; PURPOSE STATEMENT : ***********
+
+(define ThrobberToy%
+  (class* object% (Toy<%>)
+    (init-field x y selected? off-x off-y r r-speed)
+    
+    ;INTERPRETATION :
+    
+    ;
+    ;
+    ;
+    ;
+    ;
+    ; r-speed: Rate at which the radius of the throbe changes.
+    ;          For this case we have considered the speed can be
+    ;          either 1 or -1 based on the current radius of the
+    ;          throbe
+    
+    (super-new)
+    
+    (define/public (after-tick)   ;; have to update this for the bouncing effect!!!
+      (new ThrobberToy% [x x]
+           [y y]
+           [selected? selected?]
+           [off-x off-x]
+           [off-y off-y]
+           [r (+ r (update-r-speed r r-speed MIN-T-RADIUS MAX-T-RADIUS))]
+           [r-speed (update-r-speed r r-speed MIN-T-RADIUS MAX-T-RADIUS)]))
+    
+    
+    (define (update-r-speed r r-speed min-r max-r)
+      (cond
+        [(> (+ r-speed r) max-r) -1]  ; no magic numbers
+        [(< (+ r-speed r) min-r) 1]   ; no magic numbers
+        [else r-speed]))
+    
+    (define/public (after-button-down mx my)
+      (if (in-throbber? mx my)
+          (new ThrobberToy%
+               [x x] [y y]
+               [selected? true]
+               [off-x (- mx x)]
+               [off-y (- my y)]
+               [r r]
+               [r-speed r-speed])
+          this))
+    
+    (define (in-throbber? other-x other-y)
+      (<= (+ (sqr (- x other-x)) (sqr (- y other-y)))  
+          (sqr r)))
+    
+    (define/public (after-button-up mx my)
+      (new ThrobberToy%
+           [x x] [y y]
+           [selected? false]
+           [off-x off-x]
+           [off-y off-y]
+           [r r]
+           [r-speed r-speed]))
+    
+    (define/public (after-drag mx my)
+      (if selected?
+          (new ThrobberToy%
+               [x (- mx off-x)]
+               [y (- my off-y)]
+               [selected? true]
+               [off-x off-x]
+               [off-y off-y]
+               [r r]
+               [r-speed r-speed])
+          this))
+    
+    (define/public (after-key-event kev) this)
+    
+    (define/public (add-to-scene scene)
+      (place-image (circle r "solid" "green") x y scene ))
+    
+    (define/public (toy-x)
+      x)
+    
+    (define/public (toy-y)
+      y)
+    
+    (define/public (toy-data)
+      r)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;make-clock : PosInt PostInt -> Toy<%>
+;;GIVEN: an x and a y position
+;;RETURNS: an object representing a clock at the given position.
+(define (make-clock new-x new-y)
+  (new ClockToy% [x new-x] [y new-y] [selected? false] [off-x 0] [off-y 0]
+       [c-number 0]))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
+
+(define ClockToy%
+  (class* object% (Toy<%>)
+    (init-field x y selected? off-x off-y c-number)
+    ; INTERPRETATION:
+    ;
+    ;
+    ;
+    ;
+    ;
+    ;
+
+    ;
+    (field [TEXT-IMAGE (text (number->string c-number) 12 "black")])
+    ;
+    (field [TEXT-IMAGE-WIDTH (image-width TEXT-IMAGE)])
+    ;
+    (field [TEXT-IMAGE-HEIGHT (image-height TEXT-IMAGE)])
+    
+    (super-new)
+    
+    (define/public (after-tick)  
+      (new ClockToy% [x x]
+           [y y]
+           [selected? selected?]
+           [off-x off-x]
+           [off-y off-y]
+           [c-number (+ c-number 1)]))
+    
+    (define (in-clock? mx my)
+      (and
+       (<= (- (toy-x) TEXT-IMAGE-WIDTH) mx (+ (toy-x) TEXT-IMAGE-WIDTH))
+       (<= (- (toy-y) TEXT-IMAGE-HEIGHT) my (+ (toy-y) TEXT-IMAGE-HEIGHT))))
+    
+    (define/public (after-button-up mx my)
+      (new ClockToy%
+           [x x] [y y]
+           [selected? false]
+           [off-x off-x]
+           [off-y off-y]
+           [c-number c-number]))
+    
+    (define/public (after-button-down mx my)
+      (if (in-clock? mx my)
+          (new ClockToy%
+               [x x] [y y]
+               [selected? true]
+               [off-x (- mx x)]
+               [off-y (- my y)]               
+               [c-number c-number])
+          this))
+    
+    (define/public (after-drag mx my)
+      (if selected?
+          (new ClockToy%
+               [x (- mx off-x)]
+               [y (- my off-y)]
+               [selected? true]
+               [off-x off-x]
+               [off-y off-y]
+               [c-number c-number])
+          this))
+    
+    (define/public (after-key-event kev) this)
+    
+    (define/public (add-to-scene scene)
+      (place-image TEXT-IMAGE x y scene))
+    
+    (define/public (toy-x)
+      x)
+    
+    (define/public (toy-y)
+      y)
+    
+    (define/public (toy-data) 
+      c-number)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;make-football : PosInt PostInt -> Toy<%>
+;;GIVEN: an x and a y position
+;;RETURNS: an object representing a football at the given position.
+
+(define (make-football new-x new-y)
+  (new FootballToy% [x new-x] [y new-y] [selected? false] [off-x 0] [off-y 0]  
+       [scale-val 100]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
+
+; PURPOSE STATEMENT : ***********
+
+(define FootballToy%
+  (class* object% (Toy<%>)
+    (init-field x y selected? off-x off-y scale-val)
+    ;
+    ;
+    ;
+    ;
+    ;
+    ;
+
+    ;
+    (field [FOOTBALL (bitmap "football.png")])
+    ;
+    (field [FOOTBALL-IMAGE-NOW (scale (/ scale-val 100) FOOTBALL)])
+    ;
+    (field [FOOTBALL-WIDTH-NOW (image-width FOOTBALL-IMAGE-NOW)])
+    ;
+    (field [FOOTBALL-HEIGHT-NOW (image-height FOOTBALL-IMAGE-NOW)])
+    
+    (super-new)
+    
+    (define/public (after-tick)   
+      (new FootballToy% [x x]
+           [y y]
+           [selected? selected?]
+           [off-x off-x]
+           [off-y off-y]
+           [scale-val (update-scale)]))
+    
+    (define (update-scale)
+      (if (= scale-val 1)
+          scale-val
+          (- scale-val 1)))
+    
+    (define (in-football? mx my)
+      (and
+       (<= (- (toy-x) FOOTBALL-WIDTH-NOW) mx (+ (toy-x) FOOTBALL-WIDTH-NOW))
+       (<= (- (toy-y) FOOTBALL-HEIGHT-NOW) my (+ (toy-y) FOOTBALL-HEIGHT-NOW))))
+    
+    
+    (define/public (after-button-down mx my)
+      (if (in-football? mx my)
+          (new FootballToy%
+               [x x] [y y]
+               [selected? true]
+               [off-x (- mx x)]
+               [off-y (- my y)]               
+               [scale-val scale-val])
+          this))
+    
+    (define/public (after-button-up mx my)
+      (new FootballToy%
+           [x x] [y y]
+           [selected? false]
+           [off-x off-x]
+           [off-y off-y]               
+           [scale-val scale-val]))
+    
+    (define/public (after-drag mx my)
+      (if selected?
+          (new FootballToy%
+               [x (- mx off-x)]
+               [y (- my off-y)]
+               [selected? true]
+               [off-x off-x]
+               [off-y off-y]
+               [scale-val scale-val])
+          this))
+    
+    (define/public (after-key-event kev) this)
+    
+    (define/public (add-to-scene scene)
+      (place-image FOOTBALL-IMAGE-NOW x y scene))
+    
+    (define/public (toy-x)
+      x)
+    
+    (define/public (toy-y)
+      y)
+    
+    (define/public (toy-data)
+      (* FOOTBALL-WIDTH-NOW FOOTBALL-HEIGHT-NOW))))  
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
+
+;(run 0.1 1)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; Testing Framework
+
+;; test cases at the world level for target
+(define INITIAL-WORLD (make-world 10))
+(define INITIAL-WORLD-TARGET-SELECTED (send INITIAL-WORLD after-mouse-event
+                                            TARGET-INITIAL-X
+                                            TARGET-INITIAL-Y
+                                            MOUSE-BUTTON-DOWN))
+
+(define INITIAL-WORLD-TARGET-UNSELECTED (send INITIAL-WORLD after-mouse-event
+                                              TARGET-INITIAL-X
+                                              TARGET-INITIAL-Y
+                                              MOUSE-BUTTON-UP))
+
+(define INITIAL-WORLD-TARGET-DRAGGED (send INITIAL-WORLD-TARGET-SELECTED after-mouse-event
+                                           250
+                                           250
+                                           MOUSE-DRAG))
+
+(define INITIAL-WORLD-INVALID-MOUSE-EVENT (send INITIAL-WORLD after-mouse-event
+                                                TARGET-INITIAL-X
+                                                TARGET-INITIAL-Y
+                                                INVALID-MOUSE-EVENT))
+
+
+(define INITIAL-WORLD-TARGET-NOT-DRAGGED (send INITIAL-WORLD-TARGET-UNSELECTED after-mouse-event
+                                               250
+                                               250
+                                               MOUSE-DRAG))
+
+(define INITIAL-WORLD-TARGET-REMAINS-UNSELECTED (send INITIAL-WORLD-TARGET-UNSELECTED after-mouse-event
+                                                      300
+                                                      300
+                                                      MOUSE-BUTTON-DOWN))
+
+(define INITIAL-WORLD-TARGET-SQUARE (send INITIAL-WORLD-TARGET-UNSELECTED after-key-event
+                                          ADD-SQUARE-TOY-KEYEVEMT))
+
+(define INITIAL-WORLD-TARGET-THROBBER (send INITIAL-WORLD-TARGET-UNSELECTED after-key-event
+                                            ADD-THROBBER-TOY-KEYEVEMT))
+
+(define INITIAL-WORLD-TARGET-CLOCK (send INITIAL-WORLD-TARGET-UNSELECTED after-key-event
+                                         ADD-CLOCK-TOY-KEYEVEMT))
+
+(define INITIAL-WORLD-TARGET-FOOTBALL (send INITIAL-WORLD-TARGET-UNSELECTED after-key-event
+                                            ADD-FOOTBALL-TOY-KEYEVEMT))
+
+(define INITIAL-WORLD-TARGET-NOT-VALID-KEYEVENT (send INITIAL-WORLD-TARGET-UNSELECTED after-key-event
+                                                      NOT-VALID-KEYEVENT))
+
+(define INITIAL-WORLD-AFTER-TICK (send INITIAL-WORLD after-tick))
+
+(define INITIAL-WORLD-AFTER-TICK-WITH-TOY
+  (send INITIAL-WORLD-TARGET-SQUARE after-tick))
+
+(define INITIAL-WORLD-AFTER-MOUSE-DOWN-WITH-TOY
+  (send INITIAL-WORLD-TARGET-SQUARE after-mouse-event 250 250 MOUSE-BUTTON-DOWN ))
+
+(define INITIAL-WORLD-AFTER-MOUSE-UP-WITH-TOY
+  (send INITIAL-WORLD-TARGET-SQUARE after-mouse-event 250 250 MOUSE-BUTTON-UP))
+
+
+(define INITIAL-WORLD-SQUARE-DRAG (send INITIAL-WORLD-TARGET-SQUARE after-mouse-event
+                                        250
+                                        250
+                                        MOUSE-DRAG))
+(define TARGET1 (new Target% [x 100] [y 100]
+                     [selected? false]
+                     [saved-mx 0]
+                     [saved-my 0]))
+(define INITIAL-TARGET (new Target% [x TARGET-INITIAL-X] [y TARGET-INITIAL-Y]
+                            [selected? false]
+                            [saved-mx 0]
+                            [saved-my 0]))
+
+
+(define TRAGET1-AFTER-KEYEVENT (send TARGET1 after-key-event ADD-CLOCK-TOY-KEYEVEMT))
+(define SCENE-AFTER-INITIAL-WORLD (send INITIAL-WORLD to-scene))
+(define IMAGE-OF-SCENE-AFTER-INITIAL-WORLD (place-image (send INITIAL-TARGET add-to-scene EMPTY-CANVAS)
+                                                        TARGET-INITIAL-X
+                                                        TARGET-INITIAL-Y
+                                                        EMPTY-CANVAS))
+
+(define SQUARE9 (new SquareToy% [x TARGET-INITIAL-X]
+                     [y TARGET-INITIAL-Y] 
+                     [selected? true]
+                     [off-x 0]
+                     [off-y 0]
+                     [speed 15]))
+
+;**********(define LIST-WITH-TARGET-TOY (list SQUARE9 INITIAL-WORLD))
+
+(define WORLD-WITH-TARGET-TOY (send INITIAL-WORLD after-key-event ADD-SQUARE-TOY-KEYEVEMT))
+
+(define SCENE-AFTER-TARGET-TOY (send WORLD-WITH-TARGET-TOY to-scene))
+(define WORLD-SCENE-WITH-TARGET-TOY (send SQUARE9 add-to-scene IMAGE-OF-SCENE-AFTER-INITIAL-WORLD))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(begin-for-test
+  (check-equal? (send INITIAL-WORLD-TARGET-SELECTED target-selected?) true
+                "the target should be selected")
+  (check-equal? (send INITIAL-WORLD-TARGET-DRAGGED target-x) 250 
+                "the target should be dragged")
+  (check-equal? (send INITIAL-WORLD-TARGET-DRAGGED target-y) 250 
+                "the target should be dragged")
+  (check-equal? (send INITIAL-WORLD-TARGET-UNSELECTED target-selected?) false 
+                "the target should be unselected")
+  (check-equal? (send INITIAL-WORLD-TARGET-REMAINS-UNSELECTED target-x) TARGET-INITIAL-X 
+                "the target should be unselected")
+  (check-equal? (send INITIAL-WORLD-INVALID-MOUSE-EVENT target-x) TARGET-INITIAL-X
+                "the target is remains unchanged after an invalid mouse event")
+  (check-equal? (send INITIAL-WORLD-TARGET-NOT-DRAGGED target-x) TARGET-INITIAL-X 
+                "the target should be unselected")
+  (check-equal? (send INITIAL-WORLD-TARGET-SQUARE target-x) TARGET-INITIAL-X 
+                "the target should be unselected")
+  (check-equal? (send INITIAL-WORLD-TARGET-THROBBER target-x) TARGET-INITIAL-X 
+                "the target should be unselected")
+  (check-equal? (send INITIAL-WORLD-TARGET-CLOCK target-x) TARGET-INITIAL-X 
+                "the target should be unselected")
+  (check-equal? (send INITIAL-WORLD-TARGET-FOOTBALL target-x) TARGET-INITIAL-X 
+                "the target should be unselected")
+  
+  (check-equal? (send INITIAL-WORLD-AFTER-TICK target-x) TARGET-INITIAL-X 
+                "the target should be unselected")
+  (check-equal? (send INITIAL-WORLD-AFTER-TICK-WITH-TOY target-x) TARGET-INITIAL-X 
+                "the target should be unselected")
+  
+  (check-equal? (send INITIAL-WORLD-AFTER-MOUSE-DOWN-WITH-TOY target-x) TARGET-INITIAL-X 
+                "the target should be unselected")
+  
+  (check-equal? (send INITIAL-WORLD-AFTER-MOUSE-UP-WITH-TOY target-x) TARGET-INITIAL-X 
+                "the target should be unselected")
+  
+  (check-equal? (send INITIAL-WORLD-TARGET-NOT-VALID-KEYEVENT target-x) TARGET-INITIAL-X 
+                "the target should be unselected")
+  (check-equal? (send INITIAL-WORLD-SQUARE-DRAG target-y) 250 
+                "the target should be dragged")
+  (check-equal? SCENE-AFTER-INITIAL-WORLD IMAGE-OF-SCENE-AFTER-INITIAL-WORLD
+                "There is one target in the center of the canvas initially")
+  (check-equal? SCENE-AFTER-TARGET-TOY WORLD-SCENE-WITH-TARGET-TOY
+                "There is one target in the center of the canvas initially")
+  #;(check-equal? (send TARGET1 target-y) 250 
+                  "the target should be dragged")
+  #;(check-equal? (send TRAGET1-AFTER-KEYEVENT after-key-event) 250 
+                  "the target should be dragged") 
+  
+  )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; test cases for square toy
+
+(define WORLD-WITH-S1 (send INITIAL-WORLD-TARGET-SELECTED after-key-event
+                            "s"))
+(define SQUARE1 (send WORLD-WITH-S1 get-toys))
+(define SQUARE2 (new SquareToy% [x 250]
+                     [y 250] 
+                     [selected? true]
+                     [off-x 0]
+                     [off-y 0]
+                     [speed 15]))
+(define SQUARE-SELECTED (send (first SQUARE1) after-button-down
+                              360
+                              360))
+(define SQUARE-AFTER-TICK (send (first SQUARE1) after-tick))
+(define SELECTED-SQUARE-AFTER-TICK (send SQUARE2 after-tick))
+(define SQUARE-DRAGGED (send SQUARE-SELECTED after-drag
+                             360
+                             360))
+(define SQUARE-UNSELECTED (send SQUARE-SELECTED after-button-up
+                                100 100
+                                ))
+(define SQUARE-AFTER-KEYEVENT (send SQUARE-SELECTED after-key-event ADD-SQUARE-TOY-KEYEVEMT))
+
+
+(begin-for-test
+  (check-equal? (send (first SQUARE1) toy-x) TARGET-INITIAL-X
+                "Square should have the initial target coordinates")
+  (check-equal? (send (first SQUARE1) toy-y) TARGET-INITIAL-Y
+                "Square should have the initial target coordinates")
+  (check-equal? (send SQUARE-AFTER-TICK toy-y) TARGET-INITIAL-Y
+                "Square should have the initial target coordinates")
+  (check-equal? (send SQUARE-AFTER-TICK toy-x) (+ TARGET-INITIAL-X 10)
+                "")
+  (check-equal? (send SELECTED-SQUARE-AFTER-TICK toy-x) 250
+                "")
+  (check-equal? (send SQUARE-AFTER-TICK toy-data) 10 
+                "")
+  (check-equal? (send SQUARE-UNSELECTED toy-x) TARGET-INITIAL-X
+                "")
+  (check-equal? (send SQUARE-AFTER-KEYEVENT toy-x) TARGET-INITIAL-X
+                "" ))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; test cases for throbber toy
+
+(define THROBBER1 (send INITIAL-WORLD-TARGET-THROBBER get-toys))
+(define THROBBER1-SELECTED (send (first THROBBER1) after-button-down
+                                 TARGET-INITIAL-X
+                                 TARGET-INITIAL-Y))
+
+(define THROBBER1-NOT-SELECTED (send (first THROBBER1) after-button-down
+                                     400
+                                     400))
+
+(define THROBBER1-AFTER-TICK (send (first THROBBER1) after-tick))
+
+(define THROBBER1-DRAGGED (send THROBBER1-SELECTED after-drag
+                                360
+                                360))
+(define UNSEL-THROBBER1-DRAGGED (send THROBBER1-NOT-SELECTED after-drag
+                                360
+                                360))
+
+(define THROBBER1-UNSELECTED (send THROBBER1-SELECTED after-button-up
+                                   100 100
+                                   ))
+(define THROBBER1-AFTER-KEYEVENT (send THROBBER1-SELECTED after-key-event ADD-SQUARE-TOY-KEYEVEMT))
+
+(define THROBBER-AT-15-TICKS   ; radius is 20
+  (send(send(send
+             (send(send(send
+                        (send(send(send
+                                   (send(send(send
+                                              (send (send
+                                                     THROBBER1-AFTER-TICK  after-tick) after-tick)
+                                              after-tick)
+                                             after-tick)
+                                        after-tick)
+                                   after-tick)
+                                  after-tick)
+                             after-tick)
+                        after-tick)
+                       after-tick)
+                  after-tick)
+             after-tick)
+            after-tick)
+       after-tick)) 
+
+(define THROBBER-AT-30-TICKS
+  (send (send(send(send
+                   (send(send(send
+                              (send(send(send
+                                         (send(send(send
+                                                    (send (send
+                                                           THROBBER-AT-15-TICKS  after-tick) after-tick)
+                                                    after-tick)
+                                                   after-tick)
+                                              after-tick)
+                                         after-tick)
+                                        after-tick)
+                                   after-tick)
+                              after-tick)
+                             after-tick)
+                        after-tick)
+                   after-tick)
+                  after-tick)
+             after-tick)
+        after-tick))
+
+
+(begin-for-test
+  (check-equal? (send (first THROBBER1) toy-x) TARGET-INITIAL-X
+                "Throbber should have the initial target coordinates")
+  
+  (check-equal? (send (first THROBBER1) toy-y) TARGET-INITIAL-Y
+                "Throbber should have the initial target coordinates")
+  
+  (check-equal? (send THROBBER1-AFTER-TICK toy-y) TARGET-INITIAL-Y
+                "Throbber should have the initial target coordinates")
+  
+  (check-equal? (send (first THROBBER1) toy-data) 5 
+                "Throbber should have the initial radius")
+  
+  (check-equal? (send THROBBER1-UNSELECTED toy-x) TARGET-INITIAL-X
+                "")
+  (check-equal? (send THROBBER1-SELECTED toy-x) TARGET-INITIAL-X
+                "")
+  (check-equal? (send THROBBER1-AFTER-KEYEVENT toy-y) TARGET-INITIAL-Y
+                "")
+  
+  (check-equal? (send THROBBER1-NOT-SELECTED toy-x) TARGET-INITIAL-X
+                "")
+   (check-equal? (send UNSEL-THROBBER1-DRAGGED toy-x) TARGET-INITIAL-X
+                "")
+  
+  (check-equal? (send THROBBER-AT-15-TICKS toy-data) 20)
+  
+  (check-equal? (send THROBBER-AT-30-TICKS toy-data) 5)
+  
+  (check-equal? (send (send THROBBER-AT-30-TICKS after-tick) toy-data) 6)
+  (check-equal? (send (send THROBBER-AT-15-TICKS after-tick) toy-data) 19)
+  
+  (check-equal? (send (send (send THROBBER-AT-30-TICKS after-tick) after-tick)toy-data) 7))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define CLOCK1 (send INITIAL-WORLD-TARGET-CLOCK get-toys))
+(define CLOCK1-SELECTED (send (first CLOCK1) after-button-down
+                                 TARGET-INITIAL-X
+                                 TARGET-INITIAL-Y))
+(define CLOCK1-NOT-SELECTED (send (first CLOCK1) after-button-down
+                                     400
+                                     400))
+
+(define CLOCK1-AFTER-TICK (send (first CLOCK1) after-tick))
+(define CLCOK1-DRAGGED (send CLOCK1-SELECTED after-drag
+                                360
+                                360))
+(define UNSEL-CLOCK1-DRAGGED (send CLOCK1-NOT-SELECTED after-drag 360 360))
+(define CLOCK1-UNSELECTED (send CLOCK1-SELECTED after-button-up
+                                   100 100))
+(define CLOCK1-AFTER-KEYEVENT (send CLOCK1-SELECTED after-key-event ADD-SQUARE-TOY-KEYEVEMT))
+
+(begin-for-test
+  (check-equal? (send (first CLOCK1) toy-x) TARGET-INITIAL-X
+                "Throbber should have the initial target coordinates")
+  (check-equal? (send (first CLOCK1) toy-y) TARGET-INITIAL-Y
+                "Throbber should have the initial target coordinates")
+  (check-equal? (send CLOCK1-AFTER-TICK toy-y) TARGET-INITIAL-Y
+                "Throbber should have the initial target coordinates")
+  (check-equal? (send (first CLOCK1) toy-data) 0 
+                "Throbber should have the initial radius")
+  (check-equal? (send CLOCK1-UNSELECTED toy-x) TARGET-INITIAL-X
+                "")
+  (check-equal? (send CLOCK1-AFTER-KEYEVENT toy-y) TARGET-INITIAL-Y
+                "")
+  (check-equal? (send UNSEL-CLOCK1-DRAGGED toy-y) TARGET-INITIAL-Y
+                ""))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define FOOTBALL1 (send INITIAL-WORLD-TARGET-FOOTBALL get-toys))
+(define FOOTBALL1-SELECTED (send (first FOOTBALL1) after-button-down
+                                 TARGET-INITIAL-X
+                                 TARGET-INITIAL-Y))
+(define FOOTBALL1-NOT-SELECTED (send (first FOOTBALL1) after-button-down
+                                     400
+                                     400))
+
+(define FOOTBALL1-AFTER-TICK (send (first FOOTBALL1) after-tick))
+(define FOOTBALL1-DRAGGED (send FOOTBALL1-SELECTED after-drag
+                                360
+                                360))
+(define UNSEL-FOOTBALL1-DRAGGED (send FOOTBALL1-NOT-SELECTED after-drag 360 360))
+(define FOOTBALL1-UNSELECTED (send FOOTBALL1-SELECTED after-button-up
+                                   100 100))
+(define FOOTBALL1-AFTER-KEYEVENT (send FOOTBALL1-SELECTED after-key-event ADD-SQUARE-TOY-KEYEVEMT))
+(define FOOTBALL-IMAGE (bitmap "football.png"))
+
+(begin-for-test
+  (check-equal? (send (first FOOTBALL1) toy-x) TARGET-INITIAL-X
+                "Throbber should have the initial target coordinates")
+  (check-equal? (send (first FOOTBALL1) toy-y) TARGET-INITIAL-Y
+                "Throbber should have the initial target coordinates")
+  (check-equal? (send FOOTBALL1-AFTER-TICK toy-y) TARGET-INITIAL-Y
+                "Throbber should have the initial target coordinates")
+  (check-equal? (send (first FOOTBALL1) toy-data) (* (image-width FOOTBALL-IMAGE)
+                                                     (image-height FOOTBALL-IMAGE))
+                "Throbber should have the initial radius")
+  (check-equal? (send FOOTBALL1-UNSELECTED toy-x) TARGET-INITIAL-X
+                "")
+  (check-equal? (send FOOTBALL1-AFTER-KEYEVENT toy-y) TARGET-INITIAL-Y
+                "")
+  (check-equal? (send UNSEL-FOOTBALL1-DRAGGED toy-y) TARGET-INITIAL-Y
+                ""))
+
+

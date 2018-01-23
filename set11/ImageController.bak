@@ -1,0 +1,58 @@
+#lang racket
+
+(require rackunit)
+(require 2htdp/image)
+(require 2htdp/universe)
+(require "SuperController.rkt")
+(require "Interfaces.rkt")
+(require "Model.rkt")
+(require "extras.rkt")
+
+(provide xyController%)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define xyController%
+  (class* SuperController% (Controller<%>)
+    
+    (init-field [width-controller-data-image 150])
+    (init-field [height-controller-data-image 100])
+    ;; The width of the image of the controller
+    ;; The height of the image of the controller
+    
+    
+    ;; inheritted fields
+    (inherit-field model)  ; the model
+    
+    (inherit-field x y)
+    ;; the position of the center of the controller
+    (inherit-field width height)
+    ;; the width and height of the controller
+    
+    (inherit-field half-width )
+    (inherit-field half-height)
+    ;; the width and height of the controller in half
+    
+    (inherit-field particle-x)
+    (inherit-field particle-y)
+    (inherit-field particle-vx)
+    (inherit-field particle-vy)
+    ;; the position of the particle
+    
+    ;; fields for dragging
+    ;; It there has ever been a button-down in this object, then these
+    ;; contain the position of last button-down relative to
+    ;; center of viewer.  Else any value
+    (inherit-field handle-selected?)
+    (inherit-field controller-selected?)
+    (inherit-field saved-mx)
+    (inherit-field saved-my)
+    
+    (inherit-field offset-controller-mx)
+    (inherit-field offset-controller-my)
+
+
+    (super-new)
+    
+    (send model register this)
+ 

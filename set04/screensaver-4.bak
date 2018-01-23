@@ -1,0 +1,432 @@
+;; The first three lines of this file were inserted by DrRacket. They record metadata
+;; about the language level of this file in a form that our tools can easily process.
+#reader(lib "htdp-beginner-reader.ss" "lang")((modname screensaver-4) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
+;; The first three lines of this file were inserted by DrRacket. They record metadata
+;; about the language level of this file in a form that our tools can easily process.
+#reader(lib "htdp-beginner-reader.ss" "lang")((modname exp-with-dots) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
+;; Screensaver.  
+;; Two rectangles move around at a contant velocity in the scene.
+;; The user can pause/unpause the rectangles with the space bar.
+;; The user can drag the rectangles to a specific position within the canvas.
+
+(require rackunit)
+(require "extras.rkt")
+
+(require 2htdp/universe)
+(require 2htdp/image)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;; DATA DEFINITIONS;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-struct myrectangle (x y vx vy selected? mx my pen?))
+;;A Myrectangle is a (make-myrectangle PosInt PosInt Integer Integer Boolean Integer Integer)
+;;INTERPRETATION:
+;;x is the x-coordinate(in pixels) and y is the y-coordinate(in pixels)
+;;     such that (x,y) represents the center of the rectangle.
+;;vx is the velocity of the center of rectangle in x direction and
+;;vy is the velocity of the center of rectangle in y direction
+;;selected? describes whether or not the rectangle is selected.
+;;mx is the x coordinate determined by the mouse pointer
+;;my is the y coordinate determined by the mouse pointer
+;;    such that (mx,my) represent the point where mouse is pointing.
+;;pen? described whether or not the pen is down.
+
+;; template:
+;; myrectangle-fn : Myrectangle -> ??
+;(define (myrectangle-fn r)
+;  (... (myrectangle-x r)
+;       (myrectangle-y r)
+;       (myrectangle-vx r)
+;       (myrectangle-vy r)
+;       (myrectangle-selected? r)
+;       (myrectangle-mx r)
+;       (myrectangle-my r)
+;       (myrectangle-pen? r)
+;))
+
+;; ListofRectangles
+
+;; A ListOfRectangles (LOR) is either
+;; -- empty
+;; -- (cons Myrectangle LOR)
+
+;; lor-fn : LOR -> ??
+;; (define (lor-fn lor)
+;;   (cond
+;;     [(empty? lor) ...]
+;;     [else (...
+;;             (myrectangle-fn (first lor))
+;;             (lor-fn (rest lor)))]))
+
+(define-struct world (lor paused?))
+;; A WorldState is a (make-world LOR Boolean)
+;; INTERPRETATION: 
+;; LOR is a list of rectangles
+;; paused? describes whether or not the rectangle is paused.
+
+;; template:
+;; world-fn : World -> ??
+;(define (world-fn w)
+;  (... (world-lor w)
+;       (world-paused? w)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;CONSTANTS
+;;deimensions of rectangle
+(define RECT-HEIGHT 50)
+(define RECT-WIDTH 60)
+
+(define SEL-COLOR "red")
+(define UNSEL-COLOR "blue")
+(define RECT (rectangle RECT-WIDTH RECT-HEIGHT "outline" UNSEL-COLOR))
+
+(define RECT-CLICKED (rectangle RECT-WIDTH RECT-HEIGHT "outline" SEL-COLOR))
+(define PEN-DOT (circle 1 "solid" "black"))
+
+;(define INITIAL-RECT1 (make-myrectangle 200 200 5 10 false 0 0))
+;(define INITIAL-RECT2 (make-myrectangle 200 100 5 10 true 0 0))
+
+;;Contants to set collide conditions
+
+(define COLLIDE-NORTH-Y (/ RECT-HEIGHT 2))
+(define COLLIDE-WEST-X (/ RECT-WIDTH 2))
+(define COLLIDE-SOUTH-Y (- 300 COLLIDE-NORTH-Y))
+(define COLLIDE-EAST-X (- 400 COLLIDE-WEST-X))
+
+;; dimensions of the canvas
+(define CANVAS-WIDTH 400)
+(define CANVAS-HEIGHT 300)
+(define EMPTY-CANVAS (empty-scene CANVAS-WIDTH CANVAS-HEIGHT))
+
+(define UNSEL-NEW-RECT (make-myrectangle (/ CANVAS-WIDTH 2) (/ CANVAS-HEIGHT 2) 0 0 false 0 0 false))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; MAIN FUNCTION.
+
+;; screensaver : PosReal -> WorldState
+;; GIVEN: the speed of the simulation, in seconds/tick
+;; EFFECT: runs the simulation, starting with the initial state as
+;; specified in the problem set.
+;; RETURNS: the final state of the world
+(define (screensaver simulation-speed)
+  (big-bang (initial-world 5)
+            (on-tick world-after-tick simulation-speed)
+            (on-key world-after-key-event)
+            (on-draw world-to-scene)
+            (on-mouse world-after-mouse-event)))
+;(on-mouse world-after-mouse-event)))
+
+;(define listofrect (cons INITIAL-RECT1 (cons INITIAL-RECT2 empty)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; initial-world : Any -> WorldState
+;; GIVEN: any value (ignored)
+;; RETURNS: the initial world specified in the problem set i.e no rectangles 
+;; STATEGY: Call simpler functions
+(define (initial-world n)
+  (make-world
+   empty
+   true))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (rect-pen-down? r)
+  (if (myrectangle-pen? r)
+      #t
+      #f))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; world-after-tick : WorldState -> WorldState
+;; RETURNS: the world state that should follow the given world state
+;; after a tick.
+;; STRATEGY: Use template for WorldState on w
+(define (world-after-tick w)
+  (if (world-paused? w)
+      w
+      (make-world
+       (list-after-tick (world-lor w))
+       (world-paused? w))))
+;.........................................................................
+(define (list-after-tick lst)
+  (cond
+    [(empty? lst) empty]
+    [else (cons (rect-after-tick (first lst))
+                (list-after-tick (rest lst)))]))
+;........................................................................
+;; rect-after-tick : Myrectangle -> Myrectangle
+;; Given: rectangle 1
+;; RETURNS: the state of the given rectangle 1 after a tick in an unpaused world
+;; STRATEGY: Use template for Myrectangle on r
+(define (rect-after-tick r)
+  (if (myrectangle-selected? r)
+      r
+      (make-myrectangle
+       (rect-collides-x? r)
+       (rect-collides-y? r)
+       (update-rect-vx r)
+       (update-rect-vy r)
+       (myrectangle-selected? r)
+       0
+       0
+       (myrectangle-pen? r))))
+;............................................................................
+
+      
+;...........................................................................
+(define (update-rect-vx r)
+  (if (or (<= (+ (myrectangle-x r) (myrectangle-vx r)) COLLIDE-WEST-X)
+          (>= (+ (myrectangle-x r) (myrectangle-vx r)) COLLIDE-EAST-X))
+      (- 0 (myrectangle-vx r))
+      (myrectangle-vx r)))
+
+;...........................................................................
+(define (update-rect-vy r)
+  (if (or (<= (+ (myrectangle-y r) (myrectangle-vy r)) COLLIDE-NORTH-Y)
+          (>= (+ (myrectangle-y r) (myrectangle-vy r)) COLLIDE-SOUTH-Y)) 
+      (- 0 (myrectangle-vy r))
+      (myrectangle-vy r)))
+;............................................................................
+;; rect-collides-y? : Myrectangle -> PosInt
+;; Given: a rectangle to be moved at next tick
+;; RETURNS: true if the rectangle collides with the x-axis boundries i.e vertically
+;;          collides the canvas
+;; STRATEGY: Use template for Myrectangle on r
+;; EXAMPLES:
+;; (rect-collides-y? (make-myrectangle 15 COLLIDE-NORTH-Y -12 20 #false 0 0))=#true
+;; (rect-collides-y? (make-myrectangle 15 (+ COLLIDE-NORTH-Y 1) -12 20 #false 0 0))=#false
+;; (rect-collides-y? (make-myrectangle 15 COLLIDE-SOUTH-Y -12 20 #false 0 0))=#true
+;; (rect-collides-y? (make-myrectangle 15 (- COLLIDE-SOUTH-Y 1) -12 20 #false 0 0))=#false
+
+(define (rect-collides-y? r)
+  (cond
+    [(<= (+ (myrectangle-y r) (myrectangle-vy r)) COLLIDE-NORTH-Y) COLLIDE-NORTH-Y]
+    [(>= (+ (myrectangle-y r) (myrectangle-vy r)) COLLIDE-SOUTH-Y) COLLIDE-SOUTH-Y]
+    [else (+ (myrectangle-y r) (myrectangle-vy r))]))
+;..................................................................................
+;; rect-collides-x? : Myrectangle -> PosInt
+;; Given: a rectangle to be moved at next tick
+;; RETURNS: true if the rectangle collides with the y-axis boundries i.e horizontally
+;;          collides the canvas
+;; STRATEGY: Use template for Myrectangle on r
+(define (rect-collides-x? r)
+  (cond
+    [(<= (+ (myrectangle-x r) (myrectangle-vx r)) COLLIDE-WEST-X) COLLIDE-WEST-X]
+    [(>= (+ (myrectangle-x r) (myrectangle-vx r)) COLLIDE-EAST-X) COLLIDE-EAST-X]
+    [else (+ (myrectangle-x r) (myrectangle-vx r))]))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (world-rects w)
+  (world-lor w))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (world-after-key-event w kev)
+  (cond
+    [(key=? kev " ") (world-with-paused-toggled w)]
+    [(key=? kev "n") (create-rect w)]
+    [else (make-world (list-after-key-event (world-lor w) kev)
+                      (world-paused? w))]))
+;...............................................................................
+(define (list-after-key-event lst kev)
+  (cond
+    [(empty? lst) empty]
+    [else (cons (rect-after-key-event (first lst) kev)
+                (list-after-key-event (rest lst) kev))]))
+;............................................................................
+(define (rect-after-key-event r kev)
+  (if (myrectangle-selected? r)
+      (cond
+        [(key=? kev "left") (drift-rect-x r -2)]
+        [(key=? kev "right") (drift-rect-x r 2)]
+        [(key=? kev "up") (drift-rect-y r -2)]
+        [(key=? kev "down") (drift-rect-y r 2)]
+        [(key=? kev "d") (activate-pen r)]
+        [(key=? kev "u") (deactivate-pen r)]
+        [else r])
+      r)
+  )
+;...........................................................................
+(define (world-with-paused-toggled w)
+  (make-world
+   (world-lor w)
+   (not (world-paused? w))))
+;...........................................................................
+(define (drift-rect-x r v)
+  (make-myrectangle
+   (myrectangle-x r)
+   (myrectangle-y r)
+   (+ (myrectangle-vx r) v)
+   (myrectangle-vy r)
+   (myrectangle-selected? r)
+   (myrectangle-mx r)
+   (myrectangle-my r)
+   (myrectangle-pen? r)))
+;...........................................................................
+(define (drift-rect-y r v)
+  (make-myrectangle
+   (myrectangle-x r)
+   (myrectangle-y r)
+   (myrectangle-vx r)
+   (+ (myrectangle-vy r) v)
+   (myrectangle-selected? r)
+   (myrectangle-mx r)
+   (myrectangle-my r)
+   (myrectangle-pen? r)))
+;...........................................................................
+(define (create-rect w)
+  (make-world
+   (cons UNSEL-NEW-RECT (world-lor w))
+   (world-paused? w)))
+;..........................................................................
+(define (activate-pen r)
+  (make-myrectangle
+   (myrectangle-x r)
+   (myrectangle-y r)
+   (myrectangle-vx r)
+   (myrectangle-vy r)
+   (myrectangle-selected? r)
+   (myrectangle-mx r)
+   (myrectangle-my r)
+   #t))
+;..........................................................................
+(define (deactivate-pen r)
+  (make-myrectangle
+   (myrectangle-x r)
+   (myrectangle-y r)
+   (myrectangle-vx r)
+   (myrectangle-vy r)
+   (myrectangle-selected? r)
+   (myrectangle-mx r)
+   (myrectangle-my r)
+   #f))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (world-after-mouse-event w mx my mev)
+  (make-world
+   (list-after-mouse-event (world-lor w) mx my mev)
+   (world-paused? w))) 
+;.........................................................................
+(define (list-after-mouse-event lst mx my mev)
+  (cond
+    [(empty? lst) empty]
+    [else (cons (rect-after-mouse-event (first lst) mx my mev)
+                (list-after-mouse-event (rest lst) mx my mev))]))
+;.......................................................................... 
+(define (rect-after-mouse-event r mx my mev)
+  (cond
+    [(mouse=? mev "button-down") (rect-after-button-down r mx my)]
+    [(mouse=? mev "drag") (rect-after-drag r mx my)]
+    [(mouse=? mev "button-up") (rect-after-button-up r mx my)]
+    [else r]))
+;..........................................................................
+;; rect-after-button-down : Myrectangle Integer Integer -> Myrectangle
+;; GIVEN: a rectangle and x and y coordinates of mouse
+;; RETURNS: the rectangle following a button-down at the given location.
+;; STRATEGY: Use template for Rectangle on r
+;; EXAMPLES: see tests below
+(define (rect-after-button-down r mx my)
+  (if (in-rect? r mx my)
+      (make-myrectangle (myrectangle-x r)
+                        (myrectangle-y r)
+                        (myrectangle-vx r)
+                        (myrectangle-vy r)
+                        true
+                        mx
+                        my
+                        (myrectangle-pen? r))
+      r))
+;.....................................................................
+;; rect-after-drag : Myrectangle Integer Integer -> Rectangle
+;; GIVEN: a rectangle and x and y coordinates of mouse
+;; RETURNS: the rectangle following a drag at the given location
+;; STRATEGY: Use template for Rectangle on r
+;; EXAMPLES: see tests below
+(define (rect-after-drag r mx my)
+  (if (myrectangle-selected? r)
+      (make-myrectangle
+       (current-x (myrectangle-x r) (myrectangle-mx r) mx)
+       (current-y (myrectangle-y r) (myrectangle-my r) my)
+       (myrectangle-vx r)
+       (myrectangle-vy r)
+       true
+       mx
+       my
+       (myrectangle-pen? r))
+      r))
+;................................................................................
+;Helper funtions for drag
+
+;; current-x : Myrectangle Integer Integer Integer-> Myrectangle
+;; GIVEN: a rectangle with its x-coordinate, previous and current mouse coordinates
+;; RETURNS: the rectangle's updated x-coordinates based on mouse drag
+;; STRATEGY: Combine simpler functions 
+(define (current-x x pre-mx mx)
+  (if (> mx pre-mx) 
+      (+ x (distance-to-drag pre-mx mx))
+      (- x (distance-to-drag pre-mx mx))))
+
+;;distance-to-drag: Integer Integer -> PosInt
+;GIVEN: previous and current mouse coordinates
+;RETURNS: distance between them i.r distance the rectangle is dragged
+;STRATEGY: Call simpler functions
+(define (distance-to-drag p n)
+  (abs (- n p)))
+
+;; current-y : Myrectangle Integer Integer Integer-> Myrectangle
+;; GIVEN: a rectangle with its y-coordinate, previous and current mouse coordinates
+;; RETURNS: the rectangle's updated y-coordinates based on mouse drag
+;; STRATEGY: Combine simpler functions 
+(define (current-y y pre-my my)
+  (if(> my pre-my)
+     (+ y (distance-to-drag pre-my my))
+     (- y (distance-to-drag pre-my my))))
+
+;...................................................................................
+;; rect-after-button-up : Myrectangle Integer Integer -> Rectangle
+;; GIVEN: a rectangle and x and y coordinates of mouse
+;; RETURNS: the rectangle following a button-up at the given location
+;; STRATEGY: Use template for Rectangle on r
+;;EXAMPLES: see tests below
+(define (rect-after-button-up r mx my)
+  (make-myrectangle (myrectangle-x r) (myrectangle-y r)
+                    (myrectangle-vx r) (myrectangle-vy r)
+                    false (myrectangle-mx r) (myrectangle-my r)
+                    (myrectangle-pen? r))
+  )
+;.............................................................................
+;; in-rect? : Rectangle Integer Integer -> Rectangle
+;; GIVEN: a rectangle and mouse coordinates
+;; RETURNS true iff the given coordinate is inside the bounding box of
+;; the given rectangle.
+;; STRATEGY: Use template for Myrectangle on r
+(define (in-rect? r x y)
+  (and
+   (>= (+ (myrectangle-x r) COLLIDE-WEST-X) x)
+   (>= (+ (myrectangle-y r) COLLIDE-NORTH-Y) y)
+   (>= y (- (myrectangle-y r) COLLIDE-NORTH-Y))
+   (>= x (- (myrectangle-x r) COLLIDE-WEST-X))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; world-to-scene : WorldState -> Scene
+;; GIVEN: a world state
+;; RETURNS: tranlation of the given world state into a scene
+;; STRATEGY: Combine simpler functions
+
+(define (world-to-scene w)
+  (pass-rect (world-lor w)))
+
+
+(define (pass-rect lor)
+  (cond
+    [(empty? lor)  EMPTY-CANVAS]
+    [else (place-rect (first lor) (pass-rect (rest lor)))]))
+;..................................................................................
+;; place-rect : Myrectangle Scene -> Scene
+;; GIVEN: 1st rectangle and the scene
+;; RETURNS: a scene similar to given one but with the given rectangle placed in it
+;; STRATEGY: Use template for Myrectangle on r
+(define (place-rect r s)
+  (if (myrectangle-selected? r)
+      (place-image (circle 5 "outline" "red") (myrectangle-mx r) (myrectangle-my r)
+                   (place-image (append-vel-text r RECT-CLICKED SEL-COLOR) (myrectangle-x r) (myrectangle-y r) s))
+          (if (myrectangle-pen? r)
+          (place-image PEN-DOT (myrectangle-x r) (myrectangle-y r) (place-image (append-vel-text r RECT UNSEL-COLOR) (myrectangle-x r) (myrectangle-y r) s))
+          (place-image (append-vel-text r RECT UNSEL-COLOR) (myrectangle-x r) (myrectangle-y r) s))))
+(define (append-vel-text r rec c)
+  (overlay (text (get-string-vel r) 12 c) rec))
+ 
+(define (get-string-vel r)
+  (string-append "(" (number->string (myrectangle-vx r)) "," (number->string (myrectangle-vy r)) ")"))

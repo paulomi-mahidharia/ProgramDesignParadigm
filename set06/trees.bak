@@ -1,0 +1,350 @@
+;; The first three lines of this file were inserted by DrRacket. They record metadata
+;; about the language level of this file in a form that our tools can easily process.
+#reader(lib "htdp-intermediate-lambda-reader.ss" "lang")((modname trees) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
+;;;;;;;;;;;;;;;;;;;;;;;;PDP Problem set 06 : Question 01;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(require rackunit)
+(require "extras.rkt")
+
+(require 2htdp/universe)
+(require 2htdp/image)
+
+#|(provide
+ initial-world
+ run
+ world-after-mouse-event
+ world-after-key-event
+ world-to-trees
+ tree-to-root
+ tree-to-sons
+ node-to-center
+ node-to-selected?)|#
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;DATA DEFINITION;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-struct node (center offset selected? sons))
+;(define-struct tree (node sons))
+;;A Node is a
+;;(make-node NonNegInt NonNegInt NonNegInt NonNegInt Boolean Boolean)
+;;INTERPRETATION:
+(define-struct world (lot))
+
+;;A Tree is a Node.
+
+;;A ListOfTrees is either
+;;-- Node
+;;-- (cons Node ListOfTrees)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;CONSTANTS;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; dimensions of the canvas
+(define CANVAS-WIDTH 500)
+(define CANVAS-HEIGHT 400)
+(define EMPTY-CANVAS (empty-scene CANVAS-WIDTH CANVAS-HEIGHT))
+(define CANVAS-WIDTH-HALF (/ CANVAS-WIDTH 2))
+(define NODE-RADIUS 10)
+(define THRICE-NODE-RADIUS (* NODE-RADIUS 3))
+(define INIT-OFF-X 0)
+(define INIT-OFF-Y 0)
+
+;;dimentions and look of a node
+(define UNSEL-NODE (circle NODE-RADIUS "outline" "green"))
+(define SEL-NODE (circle NODE-RADIUS "solid" "green"))
+(define NEW-ROOT-AT-TOP (make-node (make-posn CANVAS-WIDTH-HALF NODE-RADIUS)
+                                   (make-posn INIT-OFF-X INIT-OFF-Y)
+                                   #t
+                                   empty))
+(define NEW-ROOT-AT-TOP-FIRST-SON (make-node
+                                   (make-posn 250 40)
+                                   (make-posn 0 0)
+                                   #true
+                                   '()))
+(define NEW-ROOT-AT-TOP-WITH-ONE-SON (make-node (make-posn CANVAS-WIDTH-HALF NODE-RADIUS)
+                                                (make-posn INIT-OFF-X INIT-OFF-Y)
+                                                #f
+                                                (list NEW-ROOT-AT-TOP-FIRST-SON)))
+
+(define TREE-WITH-CHILD-NODE-SELECTED (make-node
+                                       (make-posn 250 10)
+                                       (make-posn 0 0)
+                                       #false
+                                       (list
+                                        (make-node
+                                         (make-posn 280 40)
+                                         (make-posn 0 0)
+                                         #false
+                                         (list
+                                          (make-node
+                                           (make-posn 280 70)
+                                           (make-posn 0 0)
+                                           #true
+                                           '())))
+                                        (make-node
+                                         (make-posn 250 40)
+                                         (make-posn 0 0)
+                                         #true
+                                         '()))))
+
+(define TREE-WITH-ROOT-CHILDS-NODE-SELECTED (make-node
+                                             (make-posn 250 10)
+                                             (make-posn 0 0)
+                                             #false
+                                             (list
+                                              (make-node
+                                               (make-posn 280 40)
+                                               (make-posn 0 0)
+                                               #f
+                                               (list
+                                                (make-node
+                                                 (make-posn 280 70)
+                                                 (make-posn 0 0)
+                                                 #false
+                                                 '())))
+                                              (make-node
+                                               (make-posn 250 40)
+                                               (make-posn 0 0)
+                                               #true
+                                               (list
+                                                (make-node
+                                                 (make-posn 250 70)
+                                                 (make-posn 0 0)
+                                                 #false
+                                                 '()))))))
+
+
+
+
+
+;;key events' constants
+(define NEW-ROOT "t")
+(define NEW-SON "n")
+(define NODE-DEL "d")
+(define DEL-LEFT-HALF "l")
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;FUNCTIONS;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;initial-world : Any -> World
+;;GIVEN: any value
+;;RETURNS: an initial world.  The given value is ignored.
+;;STRATEGY: Call simpler function
+;;EXAMPLES:
+
+(define (initial-world n)
+  (make-world 
+   empty))
+
+;;TESTS:
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;run :  Any -> World
+;;GIVEN: any value
+;;EFFECT: runs a copy of an initial world
+;;RETURNS: the final state of the world.  The given value is ignored.
+;;STRATEGY:
+;;EXAMPLES:
+
+(define (run simulation-speed)
+  (big-bang (initial-world 5)
+            (on-key world-after-key-event)
+            (on-draw world-to-scene)
+            ; (on-mouse world-after-mouse-event)))
+            ))
+;;TESTS:
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;world-after-mouse-event : World Integer Integer MouseEvent -> World
+;;GIVEN: a World, a location, and a MouseEvent
+;;RETURNS: the state of the world as it should be following the given
+;;mouse event at that location.
+;;STRATEGY:
+;;EXAMPLES:
+
+;;TESTS:
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;world-after-key-event : World KeyEvent -> World
+;;GIVEN: a World and a key event
+;;RETURNS: the state of the world as it should be following the given key event
+;;STRATEGY:
+;;EXAMPLES:
+(define (world-after-key-event w kev)
+  (cond
+    [(key=? kev NEW-ROOT) (create-root w)]
+    [(key=? kev NEW-SON) (create-son w)]
+    [(key=? kev NODE-DEL) (delete-node w)]
+    [(key=? kev DEL-LEFT-HALF) (delete-nodes-in-left-canvas w)]
+    [else w]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (create-root w)
+  (make-world
+   (cons NEW-ROOT-AT-TOP (world-lot w))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (create-son w)
+  (make-world (create-son-for-tree-list (world-lot w))))
+
+(define (create-son-for-tree-list lot)
+                                  (map
+                                   create-son-for-tree
+                                   lot))
+
+(define (create-son-for-tree t)
+  (if (node-selected? t)
+      (if (empty? (node-sons t))
+          (make-node (node-center t)
+                     (node-offset t)
+                     (node-selected? t)
+                     (create-son-for-tree-list (cons (make-first-son t) (node-sons t))))
+          (make-node (node-center t)
+                     (node-offset t)
+                     (node-selected? t)
+                     (create-son-for-tree-list (cons (make-son-after-rightmost-son t) (node-sons t)))))
+      (make-node (node-center t)
+                 (node-offset t)
+                 (node-selected? t)  
+                 (create-son-for-tree-list (node-sons t)))))
+
+(define (make-first-son t)
+  (make-node (make-posn
+              (posn-x(node-center t))
+              (+ (posn-y(node-center t)) THRICE-NODE-RADIUS))
+             (node-offset t)
+             false
+             empty))
+
+(define (make-son-after-rightmost-son t)
+  (make-node (make-posn
+              (+ (apply max (map (lambda (s) (posn-x(node-center s))) (node-sons t))) THRICE-NODE-RADIUS)
+              (+ (posn-y(node-center t)) THRICE-NODE-RADIUS))
+             (node-offset t)
+             false
+             empty))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (delete-node w)
+  (make-world (keep-only-undeleted-nodes
+               (world-lot w)))) 
+
+(define (keep-only-undeleted-nodes lot)
+  (foldr check-node-for-deletion
+         empty
+         lot))
+
+(define (check-node-for-deletion t new-lot)
+  (if (node-selected? t)
+      new-lot
+      (if (empty? (node-sons t))
+          (cons t new-lot)
+          (cons (make-node
+                 (node-center t)
+                 (node-offset t)
+                 #f
+                 (keep-only-undeleted-nodes (node-sons t))) new-lot))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (delete-nodes-in-left-canvas w)
+  (make-world (delete-nodes-to-left
+               (world-lot w))))
+
+(define (delete-nodes-to-left lot)
+  (foldr check-for-nodes-on-left
+         empty
+         lot))
+
+(define (check-for-nodes-on-left t new-list)
+  (if (< (posn-x(node-center t)) CANVAS-WIDTH-HALF)
+      new-list
+      (cons t new-list))) 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;world-to-trees : World -> ListOfTree
+;;GIVEN: a World
+;;RETURNS: a list of all the trees in the given world.
+;;STRATEGY:
+;;EXAMPLES:
+
+(define (world-to-trees w)
+  (world-lot w))
+
+;;TESTS:
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;tree-to-root : Tree -> Node
+;;tree-to-sons : Tree -> ListOfTree
+;;GIVEN: a tree
+;;RETURNS: the node at the root of the tree, or its sons.
+;;STRATEGY:
+;;EXAMPLES:
+
+;;TESTS:
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;node-to-center : Node -> Posn
+;;RETURNS: the center of the given node as it is to be displayed on the
+;;scene.
+;;Note: this function returns a Posn (an ISL builtin).  This is for the
+;;convenience of the testing framework, and you may or may not wish to
+;;represent the center of the node in this way.
+;;STRATEGY:
+;;EXAMPLES:
+
+(define (node-to-center n)
+  (node-center n))
+
+;;TESTS:
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;node-to-selected? : Node -> Boolean
+;;RETURNS: true iff the given node is selected.
+;;STRATEGY:
+;;EXAMPLES:
+
+(define (node-to-selected? n)
+  (node-selected? n))
+
+;;TESTS:
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;world-to-scene : World -> Scene
+
+(define (world-to-scene w)
+  (display-list-of-tree (world-lot w)))
+
+(define (display-list-of-tree lot)
+  (foldr
+   display-scene
+   EMPTY-CANVAS
+   lot))
+
+;.............................................................................
+;; place-rect : Tree Scene -> Scene
+
+(define (display-scene t s)
+  (if (empty? (node-sons t))
+      (place-tree t s)
+      (place-tree
+       (make-node
+        (node-center t)
+        (node-offset t)
+        (node-selected? t)
+        (display-list-of-tree (node-sons t))) s))) 
+
+
+(define (place-tree t s)
+  (if (node-selected? t)
+      (place-selected-node t s)
+      (place-unselected-node t s)))
+
+(define (place-selected-node n s)
+  (place-image SEL-NODE
+               (posn-x(node-center n))
+               (posn-y(node-center n))
+               s))
+ 
+(define  (place-unselected-node n s)
+  (place-image UNSEL-NODE
+               (posn-x(node-center n))
+               (posn-y(node-center n))
+               s))
